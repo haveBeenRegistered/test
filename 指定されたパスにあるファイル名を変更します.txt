@@ -1,0 +1,29 @@
+path="/c/Users/ZF6491/Desktop/ハッシュタグ結合試験/結合試験証跡/RMK"
+
+function test2() {
+    i=1
+    # 指定されたディレクトリ内のファイルを時間順にリストアップ
+    for file in $(ls -tr $1)
+    do
+        # ファイルがディレクトリであるかどうかをチェック
+        if [ -d $1"/"$file ]
+        then
+            # ディレクトリの場合、そのディレクトリに移動
+            cd $1"/"$file
+            # 再帰的に test2 関数を呼び出す
+            test2 $1"/"$file
+        else
+            # ファイルの場合、そのディレクトリに移動
+            cd $1"/"$file
+            # ファイルのパスを表示
+            echo $1"/"$file
+            # ファイル名を "RMK" + インデックス + ".png" に変更
+            mv $file "RMK"$i".png"
+            # インデックスをインクリメント
+            ((i++))
+        fi
+    done
+}
+
+# 指定されたパスで test2 関数を呼び出す
+test2 $path

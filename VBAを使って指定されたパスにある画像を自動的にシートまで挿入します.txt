@@ -1,0 +1,105 @@
+Sub test2()
+
+ 
+
+    Dim FileName As String
+
+    Dim Picture As Picture
+
+    Dim shp As Shape
+
+    Dim TopPosition As Integer
+
+ 
+
+    Dim FolderPath As String
+
+ 
+
+    Dim flag As Integer
+
+   
+
+    Dim arr
+
+    arr = Array("rmk", "suq")
+
+   
+
+    ' ブランドの距離
+
+    Dim leftBegin As Integer
+
+    leftBegin = 50
+
+For Each element In arr
+
+ 
+
+For flag = 1 To 3
+
+ 
+
+    ' 画像が含まれているフォルダのパスを設定します
+
+    FolderPath = "C:\Users\ZF6491\Desktop\UT\evidence\" & element & "\" & CStr(flag) & "\"
+
+   
+
+    ' 初期位置を設定します
+
+    TopPosition = 50
+
+    LeftPosition = leftBegin + 800 * (flag - 1)
+
+    ' フォルダ内の最初の画像ファイルを取得します
+
+    FileName = Dir(FolderPath)
+
+   
+
+    Do While FileName <> ""
+
+        ' 画像を挿入します
+
+        Set shp = Sheet5.Shapes.AddPicture(FolderPath & FileName, False, True, 0, 0, -1, -1)
+
+ 
+
+        ' 画像の位置とサイズを設定します
+
+        shp.Left = LeftPosition
+
+        shp.Top = TopPosition
+
+        shp.Width = 250
+
+        shp.Height = 400
+
+        ' 次の位置を設定します
+
+        TopPosition = TopPosition + 500
+
+ 
+
+        ' 次の画像ファイルを取得します
+
+        FileName = Dir
+
+    Loop
+
+ 
+
+Next flag
+
+ 
+
+leftBegin = leftBegin + 3200
+
+ 
+
+Next element
+
+ 
+
+End Sub
