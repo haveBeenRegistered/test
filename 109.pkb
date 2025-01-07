@@ -1169,3 +1169,1659 @@ ELSIF l_syori_case = '14' THEN
 
     g_err_pos := '04100';
 END IF;
+
+
+-- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+20:31:23
+YUKYU IKUKYU
+
+PROCPROCEDURE
+
+育児休業の一部期間を有給化するために、育児休業の終了を前倒し、 その分を別の有給育休欠勤レコードとして作成するための処理。
+当処理は出欠勤DBレコードへのデータ作成後起動され、育休を 含むレコードについて部分有給化の処理を行う。
+
+2022年10月以降、有給期間は出産日ごとに最大10営業日とする。
+
+PROCEDURE YUKYU_IKUKYU_PROC(
+    p_syori_ym VARCHAR2,
+    p_prev_syori_ymd DATE,
+    p_syori_ymd DATE
+) IS
+    l_yukyu_ikukyu_new_seq VARCHAR2(50);
+    l_yukyu_ikukyu_start_date DATE;
+    l_yukyuikukyu_syutoku_ka_nissu NUMBER;
+    l_yukyu_kikan_from DATE;
+    EXCEPTION EXC_MESSAGE_ERROR;
+
+    CURSOR cur_yukyu_ikukyu(
+        p_yukyu_ikukyu_start_date DATE,
+        p_syori_ym VARCHAR2,
+        p_prev_syori_ymd DATE,
+        p_syori_ymd DATE
+    ) IS
+        SELECT
+            db.KOIN_NO,
+            db.PERSON_ID,
+            db.SEQUENCE_NO,
+            db.SANGO_KYUMU_SYURYOBI,
+            db.IKUKYU_KAISIBI,
+            db.IKUKYU_SYURYOBI,
+            db.KANRI_STATUS_KBN,
+            db.YUKYU_IKUKYU_SEQUENCE_NO,
+            isid.IKUKYU_KAISIBI,
+            isid.SANGO_KYUMU_STATUS,
+            isid.IKUKYU_STATUS,
+            isid.YUKYU_IKUKYU_SEQUENCE_NO,
+            db_yukyu.SEQUENCE_NO AS db_yukyu_sequence_no,
+            isid.SYUKKEKKIN_SANKYU_SOSIN_FLG,
+            db.KEKKIN_KAISIBI
+        FROM
+            IHR_SYUTU_KEKKIN_DB db
+            JOIN IHR_SANKYU_IKUKYU_DETAILS isid ON db.PERSON_ID = isid.PERSON_ID
+            LEFT JOIN IHR_SYUTU_KEKKIN_DB db_yukyu ON isid.YUKYU_IKUKYU_SEQUENCE_NO = db_yukyu.SEQUENCE_NO
+        WHERE
+            db.SOSIN_TAISYO_YM = p_syori_ym
+            AND db.KEKKIN_JIYU = 'SANKYU'
+            AND isid.SYUKKEKKIN_SEQUENCE_NO = db.SEQUENCE_NO
+            AND isid.PERSON_ID = db.PERSON_ID
+            AND isid.YUKYU_IKUKYU_SEQUENCE_NO = db_yukyu.SEQUENCE_NO(+)
+            AND db.PERSON_ID = isid.PERSON_ID
+            AND db.SEQUENCE_NO = isid.SYUKKEKKIN_SEQUENCE_NO
+            AND paaf.PERSON_ID = db.PERSON_ID
+            AND p_syori_ymd BETWEEN paaf.EFFECTIVE_START_DATE AND paaf.EFFECTIVE_END_DATE
+            AND paaf.ASSIGNMENT_TYPE = 'E'
+            AND paaf.PRIMARY_FLAG = 'Y'
+            AND paaf.GRADE_ID <> IHR_KEIYAKU_COMMON.GET_GRADE_ID_KEIYAKU
+            AND NOT (
+                isid.SANKYU_SAISYU_SYURYOBI < TO_DATE(p_syori_ym || '01', 'YYYYMMDD')
+                AND isid.SYONINBI NOT BETWEEN p_prev_syori_ymd AND p_syori_ymd
+            )
+        ORDER BY
+            db.KOIN_NO, isid.IKUKYU_KAISIBI;
+
+    CURSOR cur_end_yukyu_kanri_status(
+        p_prev_syori_ymd DATE,
+        p_syori_ymd DATE,
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT
+            db1.PERSON_ID,
+            db1.SEQUENCE_NO
+        FROM
+            IHR_SYUTU_KEKKIN_DB db1
+            JOIN IHR_SANKYU_IKUKYU_DETAILS san ON db1.PERSON_ID = san.PERSON_ID
+        WHERE
+            san.PERSON_ID = db1.PERSON_ID
+            AND db1.SEQUENCE_NO = san.YUKYU_IKUKYU_SEQUENCE_NO
+            AND san.STATUS = 'SYURYOBI_ZUMI'
+            AND san.SANKYU_SAISYU_SYURYOBI < TO_DATE(p_syori_ym || '01', 'YYYYMMDD')
+            AND san.SYONINBI NOT BETWEEN p_prev_syori_ymd AND p_syori_ymd
+            AND db1.KANRI_STATUS_KBN = 'TYU'
+            AND db1.KEKKIN_JIYU = 'YUKYU_IKUKYU'
+            AND san.TORIKESI_FLG = 0;
+
+BEGIN
+    g_err_pos := '06000';
+
+    -- 制度開始年月日を固定値からルックアップに変更。延期された為。
+    l_yukyu_ikukyu_new_seq := NULL;
+    l_yukyu_ikukyu_start_date := NULL;
+
+    g_err_pos := '06050';
+
+    SELECT TO_DATE(MEANING, 'YYYYMMDD')
+    INTO l_yukyu_ikukyu_start_date
+    FROM FND_LOOKUP_VALUES
+    WHERE LOOKUP_TYPE = 'IHR_YUKYU_IKUKYU_START_DATE'
+    AND LANGUAGE = 'JA'
+    AND LOOKUP_CODE = '1';
+
+    -- 出欠勤DBテーブルより取得した産休育休レコードについて、以下の3つの処理を行う
+    FOR row_yukyu_ikukyu IN cur_yukyu_ikukyu(
+        p_yukyu_ikukyu_start_date,
+        p_syori_ym,
+        p_prev_syori_ymd,
+        p_syori_ymd
+    ) LOOP
+        -- データ登録用変数初期化
+        g_row_syutu_kekkin_db := NULL;
+        l_yukyu_kikan_from := NULL;
+        l_yukyuikukyu_syutoku_ka_nissu := 0;
+
+        -- 新規に有給育休レコードを作成する際に使用するシーケンスNoを設定しておく
+        l_yukyu_ikukyu_new_seq := GET_NEW_SEQUENCE_NO(p_person_id => row_yukyu_ikukyu.PERSON_ID);
+
+        g_err_pos := '06100';
+
+        -- 産休育休レコードに紐付く有給育休欠勤レコードの作成(既に存在する場合は削除または更新)
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS = 'SYUTOKU' THEN
+            g_err_pos := '06200';
+
+            -- 有給育休が何日取得できるか
+            l_yukyuikukyu_syutoku_ka_nissu := YUKYUIKUKYU_SYUTOKUKANOU_NISSU(
+                p_person_id => row_yukyu_ikukyu.PERSON_ID,
+                p_syussanbi => row_yukyu_ikukyu.DETAIL_SYUSSANBI,
+                p_syussan_yoteibi => row_yukyu_ikukyu.DETAIL_SYUSSAN_YOTEIBI,
+                p_ikukyu_kaisibi => row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI
+            );
+
+            -- 有給育休の開始日
+            IF l_yukyuikukyu_syutoku_ka_nissu > 0 THEN
+                l_yukyu_kikan_from := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI, l_yukyuikukyu_syutoku_ka_nissu);
+
+                -- 当該産休育休レコードに紐づく有給育休レコードは存在するか? (Case2)
+                IF row_yukyu_ikukyu.DETAIL_YUKYU_IKUKYU_SEQ_NO IS NULL THEN
+                    g_err_pos := '06300';
+
+                    IF l_yukyuikukyu_syutoku_ka_nissu > 0 THEN
+                        -- 有給育休レコードを新規作成
+                        g_row_syutu_kekkin_db.CTRL_INFO := 'NEW';
+                        g_row_syutu_kekkin_db.KOIN_NO := row_yukyu_ikukyu.KOIN_NO;
+                        g_row_syutu_kekkin_db.PERSON_ID := row_yukyu_ikukyu.PERSON_ID;
+                        g_row_syutu_kekkin_db.SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                        g_row_syutu_kekkin_db.KANRI_STATUS_KBN := row_yukyu_ikukyu.DB_KANRI_STATUS_KBN;
+                        g_row_syutu_kekkin_db.KEKKIN_JIYU := 'YUKYU_IKUKYU';
+                        g_row_syutu_kekkin_db.KEKKIN_KAISIBI := l_yukyu_kikan_from;
+                        g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI := row_yukyu_ikukyu.DB_KEKKIN_KAISIBI;
+
+                        g_err_pos := '06400';
+
+                        g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI;
+                        g_row_syutu_kekkin_db.BYOMEI := 'YUKYU_IKUKYU';
+                        g_row_syutu_kekkin_db.SANZEN_TOKUKYU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_TOKUKYU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_KYUMU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_KYUMU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SANGO_KYUMU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANGO_KYUMU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SYUSSAN_YOTEIBI := NULL;
+                        g_row_syutu_kekkin_db.SYUSSANBI := NULL;
+                        g_row_syutu_kekkin_db.SOSIN_TAISYO_YM := p_syori_ym;
+                        g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := 'ON';
+                        g_row_syutu_kekkin_db.TYOKETU_KAISI_SEQUENCE_ID := NULL;
+                        g_row_syutu_kekkin_db.TYOKIN_KEKKIN_SEQUENCE_ID := NULL;
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := NULL;
+                        g_row_syutu_kekkin_db.LAST_UPDATE_DATE := 'LAST_UPDATE_DATE';
+                        g_row_syutu_kekkin_db.LAST_UPDATED_BY := 'LAST_UPDATED_BY';
+                        g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN := 'LAST_UPDATE_LOGIN';
+                        g_row_syutu_kekkin_db.CREATED_BY := 'CREATED_BY';
+                        g_row_syutu_kekkin_db.CREATION_DATE := 'CREATION_DATE';
+
+                        -- データを挿入
+                        INS_SYUTU_KEKKIN_DB;
+                    END IF;
+                ELSE
+                    g_err_pos := '06500';
+
+                    g_row_syutu_kekkin_db.CTRL_INFO := 'UPD';
+                    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := row_yukyu_ikukyu.DB_KANRI_STATUS_KBN;
+                    g_row_syutu_kekkin_db.KEKKIN_KAISIBI := l_yukyu_kikan_from;
+                    g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI := row_yukyu_ikukyu.DB_KEKKIN_KAISIBI;
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI;
+                    g_row_syutu_kekkin_db.SOSIN_TAISYO_YM := p_syori_ym;
+                    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := 'ON';
+                    g_row_syutu_kekkin_db.LAST_UPDATE_DATE := 'LAST_UPDATE_DATE';
+                    g_row_syutu_kekkin_db.LAST_UPDATED_BY := 'LAST_UPDATED_BY';
+                    g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN := 'LAST_UPDATE_LOGIN';
+
+                    IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                        UPDATE IHR_SYUTU_KEKKIN_DB
+                        SET
+                            CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                            KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN,
+                            KEKKIN_KAISIBI = g_row_syutu_kekkin_db.KEKKIN_KAISIBI,
+                            KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                            TOSYO_KEKKIN_KAISIBI = g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI,
+                            SOSIN_TAISYO_YM = g_row_syutu_kekkin_db.SOSIN_TAISYO_YM,
+                            SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+                            LAST_UPDATE_DATE = g_row_syutu_kekkin_db.LAST_UPDATE_DATE,
+                            LAST_UPDATED_BY = g_row_syutu_kekkin_db.LAST_UPDATED_BY,
+                            LAST_UPDATE_LOGIN = g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN
+                        WHERE
+                            PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                            AND SEQUENCE_NO = row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+                END IF;
+            END IF;
+        END IF;
+
+        g_err_pos := '06600';
+
+        -- 産休育休レコードの更新(取得可能営業日数分短くする処理)
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS = 'SYUTOKU' AND row_yukyu_ikukyu.DETAIL_SANGO_KYUMU_STATUS = 'SYUTOKU' THEN
+            g_err_pos := '07000';
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+                    g_err_pos := '07100';
+
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+                    l_yukyu_kikan_from := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+
+                    IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                    ELSE
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+
+                    UPDATE IHR_SYUTU_KEKKIN_DB
+                    SET
+                        KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                        IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                        YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                    WHERE
+                        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+                ELSE
+                    g_err_pos := '07200';
+
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+                    g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+                    g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+
+                    IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                    ELSE
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+
+                    UPDATE IHR_SYUTU_KEKKIN_DB
+                    SET
+                        KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                        IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+                        IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                        YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                    WHERE
+                        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+                END IF;
+            END IF;
+        END IF;
+
+        g_err_pos := '07300';
+
+        -- 以前にホスト送信されたレコードか?
+        IF row_yukyu_ikukyu.DETAIL_SANKYU_SOSIN_FLG-- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+20:31:23
+YUKYU IKUKYU
+
+PROCPROCEDURE
+
+育児休業の一部期間を有給化するために、育児休業の終了を前倒し、 その分を別の有給育休欠勤レコードとして作成するための処理。
+当処理は出欠勤DBレコードへのデータ作成後起動され、育休を 含むレコードについて部分有給化の処理を行う。
+
+2022年10月以降、有給期間は出産日ごとに最大10営業日とする。
+
+PROCEDURE YUKYU_IKUKYU_PROC(
+    p_syori_ym VARCHAR2,
+    p_prev_syori_ymd DATE,
+    p_syori_ymd DATE
+) IS
+    l_yukyu_ikukyu_new_seq VARCHAR2(50);
+    l_yukyu_ikukyu_start_date DATE;
+    l_yukyuikukyu_syutoku_ka_nissu NUMBER;
+    l_yukyu_kikan_from DATE;
+    EXCEPTION EXC_MESSAGE_ERROR;
+
+    CURSOR cur_yukyu_ikukyu(
+        p_yukyu_ikukyu_start_date DATE,
+        p_syori_ym VARCHAR2,
+        p_prev_syori_ymd DATE,
+        p_syori_ymd DATE
+    ) IS
+        SELECT
+            db.KOIN_NO,
+            db.PERSON_ID,
+            db.SEQUENCE_NO,
+            db.SANGO_KYUMU_SYURYOBI,
+            db.IKUKYU_KAISIBI,
+            db.IKUKYU_SYURYOBI,
+            db.KANRI_STATUS_KBN,
+            db.YUKYU_IKUKYU_SEQUENCE_NO,
+            isid.IKUKYU_KAISIBI,
+            isid.SANGO_KYUMU_STATUS,
+            isid.IKUKYU_STATUS,
+            isid.YUKYU_IKUKYU_SEQUENCE_NO,
+            db_yukyu.SEQUENCE_NO AS db_yukyu_sequence_no,
+            isid.SYUKKEKKIN_SANKYU_SOSIN_FLG,
+            db.KEKKIN_KAISIBI
+        FROM
+            IHR_SYUTU_KEKKIN_DB db
+            JOIN IHR_SANKYU_IKUKYU_DETAILS isid ON db.PERSON_ID = isid.PERSON_ID
+            LEFT JOIN IHR_SYUTU_KEKKIN_DB db_yukyu ON isid.YUKYU_IKUKYU_SEQUENCE_NO = db_yukyu.SEQUENCE_NO
+        WHERE
+            db.SOSIN_TAISYO_YM = p_syori_ym
+            AND db.KEKKIN_JIYU = 'SANKYU'
+            AND isid.SYUKKEKKIN_SEQUENCE_NO = db.SEQUENCE_NO
+            AND isid.PERSON_ID = db.PERSON_ID
+            AND isid.YUKYU_IKUKYU_SEQUENCE_NO = db_yukyu.SEQUENCE_NO(+)
+            AND db.PERSON_ID = isid.PERSON_ID
+            AND db.SEQUENCE_NO = isid.SYUKKEKKIN_SEQUENCE_NO
+            AND paaf.PERSON_ID = db.PERSON_ID
+            AND p_syori_ymd BETWEEN paaf.EFFECTIVE_START_DATE AND paaf.EFFECTIVE_END_DATE
+            AND paaf.ASSIGNMENT_TYPE = 'E'
+            AND paaf.PRIMARY_FLAG = 'Y'
+            AND paaf.GRADE_ID <> IHR_KEIYAKU_COMMON.GET_GRADE_ID_KEIYAKU
+            AND NOT (
+                isid.SANKYU_SAISYU_SYURYOBI < TO_DATE(p_syori_ym || '01', 'YYYYMMDD')
+                AND isid.SYONINBI NOT BETWEEN p_prev_syori_ymd AND p_syori_ymd
+            )
+        ORDER BY
+            db.KOIN_NO, isid.IKUKYU_KAISIBI;
+
+    CURSOR cur_end_yukyu_kanri_status(
+        p_prev_syori_ymd DATE,
+        p_syori_ymd DATE,
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT
+            db1.PERSON_ID,
+            db1.SEQUENCE_NO
+        FROM
+            IHR_SYUTU_KEKKIN_DB db1
+            JOIN IHR_SANKYU_IKUKYU_DETAILS san ON db1.PERSON_ID = san.PERSON_ID
+        WHERE
+            san.PERSON_ID = db1.PERSON_ID
+            AND db1.SEQUENCE_NO = san.YUKYU_IKUKYU_SEQUENCE_NO
+            AND san.STATUS = 'SYURYOBI_ZUMI'
+            AND san.SANKYU_SAISYU_SYURYOBI < TO_DATE(p_syori_ym || '01', 'YYYYMMDD')
+            AND san.SYONINBI NOT BETWEEN p_prev_syori_ymd AND p_syori_ymd
+            AND db1.KANRI_STATUS_KBN = 'TYU'
+            AND db1.KEKKIN_JIYU = 'YUKYU_IKUKYU'
+            AND san.TORIKESI_FLG = 0;
+
+BEGIN
+    g_err_pos := '06000';
+
+    -- 制度開始年月日を固定値からルックアップに変更。延期された為。
+    l_yukyu_ikukyu_new_seq := NULL;
+    l_yukyu_ikukyu_start_date := NULL;
+
+    g_err_pos := '06050';
+
+    SELECT TO_DATE(MEANING, 'YYYYMMDD')
+    INTO l_yukyu_ikukyu_start_date
+    FROM FND_LOOKUP_VALUES
+    WHERE LOOKUP_TYPE = 'IHR_YUKYU_IKUKYU_START_DATE'
+    AND LANGUAGE = 'JA'
+    AND LOOKUP_CODE = '1';
+
+    -- 出欠勤DBテーブルより取得した産休育休レコードについて、以下の3つの処理を行う
+    FOR row_yukyu_ikukyu IN cur_yukyu_ikukyu(
+        p_yukyu_ikukyu_start_date,
+        p_syori_ym,
+        p_prev_syori_ymd,
+        p_syori_ymd
+    ) LOOP
+        -- データ登録用変数初期化
+        g_row_syutu_kekkin_db := NULL;
+        l_yukyu_kikan_from := NULL;
+        l_yukyuikukyu_syutoku_ka_nissu := 0;
+
+        -- 新規に有給育休レコードを作成する際に使用するシーケンスNoを設定しておく
+        l_yukyu_ikukyu_new_seq := GET_NEW_SEQUENCE_NO(p_person_id => row_yukyu_ikukyu.PERSON_ID);
+
+        g_err_pos := '06100';
+
+        -- 産休育休レコードに紐付く有給育休欠勤レコードの作成(既に存在する場合は削除または更新)
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS = 'SYUTOKU' THEN
+            g_err_pos := '06200';
+
+            -- 有給育休が何日取得できるか
+            l_yukyuikukyu_syutoku_ka_nissu := YUKYUIKUKYU_SYUTOKUKANOU_NISSU(
+                p_person_id => row_yukyu_ikukyu.PERSON_ID,
+                p_syussanbi => row_yukyu_ikukyu.DETAIL_SYUSSANBI,
+                p_syussan_yoteibi => row_yukyu_ikukyu.DETAIL_SYUSSAN_YOTEIBI,
+                p_ikukyu_kaisibi => row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI
+            );
+
+            -- 有給育休の開始日
+            IF l_yukyuikukyu_syutoku_ka_nissu > 0 THEN
+                l_yukyu_kikan_from := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI, l_yukyuikukyu_syutoku_ka_nissu);
+
+                -- 当該産休育休レコードに紐づく有給育休レコードは存在するか? (Case2)
+                IF row_yukyu_ikukyu.DETAIL_YUKYU_IKUKYU_SEQ_NO IS NULL THEN
+                    g_err_pos := '06300';
+
+                    IF l_yukyuikukyu_syutoku_ka_nissu > 0 THEN
+                        -- 有給育休レコードを新規作成
+                        g_row_syutu_kekkin_db.CTRL_INFO := 'NEW';
+                        g_row_syutu_kekkin_db.KOIN_NO := row_yukyu_ikukyu.KOIN_NO;
+                        g_row_syutu_kekkin_db.PERSON_ID := row_yukyu_ikukyu.PERSON_ID;
+                        g_row_syutu_kekkin_db.SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                        g_row_syutu_kekkin_db.KANRI_STATUS_KBN := row_yukyu_ikukyu.DB_KANRI_STATUS_KBN;
+                        g_row_syutu_kekkin_db.KEKKIN_JIYU := 'YUKYU_IKUKYU';
+                        g_row_syutu_kekkin_db.KEKKIN_KAISIBI := l_yukyu_kikan_from;
+                        g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI := row_yukyu_ikukyu.DB_KEKKIN_KAISIBI;
+
+                        g_err_pos := '06400';
+
+                        g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI;
+                        g_row_syutu_kekkin_db.BYOMEI := 'YUKYU_IKUKYU';
+                        g_row_syutu_kekkin_db.SANZEN_TOKUKYU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_TOKUKYU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_KYUMU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANZEN_KYUMU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SANGO_KYUMU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.SANGO_KYUMU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+                        g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+                        g_row_syutu_kekkin_db.SYUSSAN_YOTEIBI := NULL;
+                        g_row_syutu_kekkin_db.SYUSSANBI := NULL;
+                        g_row_syutu_kekkin_db.SOSIN_TAISYO_YM := p_syori_ym;
+                        g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := 'ON';
+                        g_row_syutu_kekkin_db.TYOKETU_KAISI_SEQUENCE_ID := NULL;
+                        g_row_syutu_kekkin_db.TYOKIN_KEKKIN_SEQUENCE_ID := NULL;
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := NULL;
+                        g_row_syutu_kekkin_db.LAST_UPDATE_DATE := 'LAST_UPDATE_DATE';
+                        g_row_syutu_kekkin_db.LAST_UPDATED_BY := 'LAST_UPDATED_BY';
+                        g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN := 'LAST_UPDATE_LOGIN';
+                        g_row_syutu_kekkin_db.CREATED_BY := 'CREATED_BY';
+                        g_row_syutu_kekkin_db.CREATION_DATE := 'CREATION_DATE';
+
+                        -- データを挿入
+                        INS_SYUTU_KEKKIN_DB;
+                    END IF;
+                ELSE
+                    g_err_pos := '06500';
+
+                    g_row_syutu_kekkin_db.CTRL_INFO := 'UPD';
+                    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := row_yukyu_ikukyu.DB_KANRI_STATUS_KBN;
+                    g_row_syutu_kekkin_db.KEKKIN_KAISIBI := l_yukyu_kikan_from;
+                    g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI := row_yukyu_ikukyu.DB_KEKKIN_KAISIBI;
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI;
+                    g_row_syutu_kekkin_db.SOSIN_TAISYO_YM := p_syori_ym;
+                    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := 'ON';
+                    g_row_syutu_kekkin_db.LAST_UPDATE_DATE := 'LAST_UPDATE_DATE';
+                    g_row_syutu_kekkin_db.LAST_UPDATED_BY := 'LAST_UPDATED_BY';
+                    g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN := 'LAST_UPDATE_LOGIN';
+
+                    IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                        UPDATE IHR_SYUTU_KEKKIN_DB
+                        SET
+                            CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                            KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN,
+                            KEKKIN_KAISIBI = g_row_syutu_kekkin_db.KEKKIN_KAISIBI,
+                            KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                            TOSYO_KEKKIN_KAISIBI = g_row_syutu_kekkin_db.TOSYO_KEKKIN_KAISIBI,
+                            SOSIN_TAISYO_YM = g_row_syutu_kekkin_db.SOSIN_TAISYO_YM,
+                            SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+                            LAST_UPDATE_DATE = g_row_syutu_kekkin_db.LAST_UPDATE_DATE,
+                            LAST_UPDATED_BY = g_row_syutu_kekkin_db.LAST_UPDATED_BY,
+                            LAST_UPDATE_LOGIN = g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN
+                        WHERE
+                            PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                            AND SEQUENCE_NO = row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+                END IF;
+            END IF;
+        END IF;
+
+        g_err_pos := '06600';
+
+        -- 産休育休レコードの更新(取得可能営業日数分短くする処理)
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS = 'SYUTOKU' AND row_yukyu_ikukyu.DETAIL_SANGO_KYUMU_STATUS = 'SYUTOKU' THEN
+            g_err_pos := '07000';
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+                    g_err_pos := '07100';
+
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+                    l_yukyu_kikan_from := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+
+                    IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                    ELSE
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+
+                    UPDATE IHR_SYUTU_KEKKIN_DB
+                    SET
+                        KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                        IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                        YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                    WHERE
+                        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+                ELSE
+                    g_err_pos := '07200';
+
+                    g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+                    g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+                    g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+
+                    IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+                    ELSE
+                        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+                    END IF;
+
+                    UPDATE IHR_SYUTU_KEKKIN_DB
+                    SET
+                        KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                        IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+                        IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                        YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                    WHERE
+                        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+                END IF;
+            END IF;
+        END IF;
+
+        g_err_pos := '07300';
+
+        -- 以前にホスト送信されたレコードか?
+        IF row_yukyu_ikukyu.DETAIL_SANKYU_SOSIN_FLG
+
+
+        -- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+-- 未送信
+g_err_pos := '07400';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード未送信、有給育休有り
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能日数より多いと判断) (Case7)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード未送信、有給育休有り、育休期間の産休育休IF有り
+            -- 過去処理分の場合、全期間有給育休→さかのぼって申請されて無給期間が発生のパターン
+            g_err_pos := '07500';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+            -- 育休日数が取得可能営業日数より多い場合
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+            END IF;
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                -- 処理年月分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            ELSE
+                -- 過去処理分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO,
+                    KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+                        p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+                        p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+                        p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+                    )
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            END IF;
+        END IF;
+    END IF;
+END IF;
+
+-- 育休日数が取得可能営業日数以下の場合 (Case6)
+g_err_pos := '07550';
+g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+
+UPDATE IHR_SYUTU_KEKKIN_DB
+SET
+    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+    IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+WHERE
+    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+
+-- (Case8)
+-- 育休のみ、産休育休レコード未送信、有給育休有り、産休育休IF無し
+-- 過去処理分の場合、全期間有給育休→全期間有給育休のままのパターン(更新不要)
+g_err_pos := '07800';
+
+-- 育休日数が取得可能営業日数以下の場合
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := C_FLG_OFF;
+    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := C_KANRI_STATUS_KBN_END;
+
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+        KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード未送信、有給育休取得不可
+g_err_pos := '07650';
+g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+ELSE
+    -- 過去処理分
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL,
+        KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+            p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+            p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+            p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+        )
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード送信済み
+g_err_pos := '07700';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード送信済み、有給育休あり
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能営業日数より多いと判断)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード送信済み、有給育休あり、育休期間の産休育休IF有り
+            -- 育休日数が取得可能営業日数より多い場合
+            g_err_pos := '07800';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_UPD;
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+            END IF;
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                -- 処理年月分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            ELSE
+                -- 過去処理分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO,
+                    KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+                        p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+                        p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+                        p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+                    )
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            END IF;
+        END IF;
+    END IF;
+END IF;
+
+-- 育休日数が取得可能営業日数以下の場合 (Case6)
+g_err_pos := '07550';
+g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+
+UPDATE IHR_SYUTU_KEKKIN_DB
+SET
+    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+    IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+WHERE
+    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+
+-- (Case8)
+-- 育休のみ、産休育休レコード未送信、有給育休有り、産休育休IF無し
+-- 過去処理分の場合、全期間有給育休→全期間有給育休のままのパターン(更新不要)
+g_err_pos := '07800';
+
+-- 育休日数が取得可能営業日数以下の場合
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := C_FLG_OFF;
+    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := C_KANRI_STATUS_KBN_END;
+
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+        KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード未送信、有給育休取得不可
+g_err_pos := '07650';
+g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+ELSE
+    -- 過去処理分
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL,
+        KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+            p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+            p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+            p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+        )
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード送信済み
+g_err_pos := '07700';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード送信済み、有給育休あり
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能営業日数より多いと判断)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード送信済み、有給育休あり、育休期間の産休育休IF有り
+            -- 育休日数が取得可能営業日数より多い場合
+            g_err_pos := '07800';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_UPD;
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+               -- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+-- 未送信
+g_err_pos := '07400';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード未送信、有給育休有り
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能日数より多いと判断) (Case7)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード未送信、有給育休有り、育休期間の産休育休IF有り
+            -- 過去処理分の場合、全期間有給育休→さかのぼって申請されて無給期間が発生のパターン
+            g_err_pos := '07500';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+            -- 育休日数が取得可能営業日数より多い場合
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+            END IF;
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                -- 処理年月分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            ELSE
+                -- 過去処理分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO,
+                    KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+                        p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+                        p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+                        p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+                    )
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            END IF;
+        END IF;
+    END IF;
+END IF;
+
+-- 育休日数が取得可能営業日数以下の場合 (Case6)
+g_err_pos := '07550';
+g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+
+UPDATE IHR_SYUTU_KEKKIN_DB
+SET
+    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+    IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+WHERE
+    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+
+-- (Case8)
+-- 育休のみ、産休育休レコード未送信、有給育休有り、産休育休IF無し
+-- 過去処理分の場合、全期間有給育休→全期間有給育休のままのパターン(更新不要)
+g_err_pos := '07800';
+
+-- 育休日数が取得可能営業日数以下の場合
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := C_FLG_OFF;
+    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := C_KANRI_STATUS_KBN_END;
+
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+        KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード未送信、有給育休取得不可
+g_err_pos := '07650';
+g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+ELSE
+    -- 過去処理分
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL,
+        KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+            p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+            p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+            p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+        )
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード送信済み
+g_err_pos := '07700';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード送信済み、有給育休あり
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能営業日数より多いと判断)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード送信済み、有給育休あり、育休期間の産休育休IF有り
+            -- 育休日数が取得可能営業日数より多い場合
+            g_err_pos := '07800';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_UPD;
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := row_yukyu_ikukyu.YUKYU_SEQUENCE_NO;
+            END IF;
+
+            IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+                -- 処理年月分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            ELSE
+                -- 過去処理分
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO,
+                    KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+                        p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+                        p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+                        p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+                    )
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            END IF;
+        END IF;
+    END IF;
+END IF;
+
+-- 育休日数が取得可能営業日数以下の場合 (Case6)
+g_err_pos := '07550';
+g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := row_yukyu_ikukyu.DB_SANGO_KYUMU_SYURYOBI;
+g_row_syutu_kekkin_db.IKUKYU_KAISIBI := NULL;
+g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := NULL;
+g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+
+UPDATE IHR_SYUTU_KEKKIN_DB
+SET
+    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+    IKUKYU_KAISIBI = g_row_syutu_kekkin_db.IKUKYU_KAISIBI,
+    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+WHERE
+    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+
+-- (Case8)
+-- 育休のみ、産休育休レコード未送信、有給育休有り、産休育休IF無し
+-- 過去処理分の場合、全期間有給育休→全期間有給育休のままのパターン(更新不要)
+g_err_pos := '07800';
+
+-- 育休日数が取得可能営業日数以下の場合
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := C_FLG_OFF;
+    g_row_syutu_kekkin_db.KANRI_STATUS_KBN := C_KANRI_STATUS_KBN_END;
+
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+        KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード未送信、有給育休取得不可
+g_err_pos := '07650';
+g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_NEW;
+
+IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+ELSE
+    -- 過去処理分
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL,
+        KANRI_STATUS_KBN = GET_KANRI_STATUS_KBN(
+            p_status => row_yukyu_ikukyu.DETAIL_STATUS,
+            p_syori_gessyo => TO_DATE(p_syori_ym || '01', 'YYYYMMDD'),
+            p_kekkin_syuryobi => row_yukyu_ikukyu.DETAIL_IKUKYU_SYURYOBI
+        )
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+END IF;
+
+-- 育休あり、産休育休レコード送信済み
+g_err_pos := '07700';
+
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 2022/04 ADD
+    -- 育休あり、産休育休レコード送信済み、有給育休あり
+    -- 育休日数は取得可能営業日数より多いか
+    -- (育休開始日 < 有給育休開始日ならば育休日数が取得可能営業日数より多いと判断)
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < l_yukyu_kikan_from THEN
+            -- 育休あり、産休育休レコード送信済み、有給育休あり、育休期間の産休育休IF有り
+            -- 育休日数が取得可能営業日数より多い場合
+            g_err_pos := '07800';
+            g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_UPD;
+            g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := l_yukyu_kikan_from - 1;
+            g_row_syutu_kekkin_db.IKUKYU_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+            IF row_yukyu_ikukyu.YUKYU_SEQUENCE_NO IS NULL THEN
+                g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := l_yukyu_ikukyu_new_seq;
+            ELSE
+-- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+-- 育休あり、産休育休レコード送信済み
+再送信
+g_err_pos := '07700';
+
+-- 更新者情報
+g_row_syutu_kekkin_db.LAST_UPDATED_BY := C_LAST_UPDATED_BY;
+g_row_syutu_kekkin_db.LAST_UPDATE_LOGIN := C_LAST_UPDATE_LOGIN;
+
+-- 産休育休レコード送信済み、有給育休あり
+IF l_yukyuikukyu_syutoku_ka_nissu THEN
+    -- 育休日数は取得可能営業日数より多いか
+    IF row_yukyu_ikukyu.DETAIL_IKUKYU_KAISIBI < GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) THEN
+        g_err_pos := '07800';
+
+        -- 管理中の明細か
+        g_row_syutu_kekkin_db.CTRL_INFO := C_CTRL_INFO_UPD;
+        g_row_syutu_kekkin_db.KEKKIN_SYURYOBI := GET_X_EIGYOBI_MAE_DATE(row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI, 10) - 1;
+        g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO := I_yukyu_ikukyu_new_seq;
+
+        IF row_yukyu_ikukyu.DB_SOSIN_TAISYO_YM = p_syori_ym THEN
+            -- 処理年月分
+            UPDATE IHR_SYUTU_KEKKIN_DB
+            SET
+                CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO
+            WHERE
+                PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+        ELSE
+            -- 過去処理分
+            IF row_yukyu_ikukyu.DB_IKUKYU_SYURYOBI <> g_row_syutu_kekkin_db.IKUKYU_SYURYOBI
+                OR row_yukyu_ikukyu.DB_KEKKIN_SYURYOBI <> g_row_syutu_kekkin_db.KEKKIN_SYURYOBI
+                OR row_yukyu_ikukyu.DB_YUKYU_IKUKYU_SEQUENCE_NO IS NULL THEN
+                -- 差分があれば更新し、送信対象とする
+                UPDATE IHR_SYUTU_KEKKIN_DB
+                SET
+                    CTRL_INFO = g_row_syutu_kekkin_db.CTRL_INFO,
+                    KEKKIN_SYURYOBI = g_row_syutu_kekkin_db.KEKKIN_SYURYOBI,
+                    IKUKYU_SYURYOBI = g_row_syutu_kekkin_db.IKUKYU_SYURYOBI,
+                    YUKYU_IKUKYU_SEQUENCE_NO = g_row_syutu_kekkin_db.YUKYU_IKUKYU_SEQUENCE_NO,
+                    SOSIN_TAISYO_YM = p_syori_ym,
+                    SOSIN_TAISYO_FLG = C_FLG_ON,
+                    LAST_UPDATE_DATE = C_LAST_UPDATE_DATE,
+                    LAST_UPDATED_BY = C_LAST_UPDATED_BY,
+                    LAST_UPDATE_LOGIN = C_LAST_UPDATE_LOGIN
+                WHERE
+                    PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+                    AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+            END IF;
+        END IF;
+    END IF;
+END IF;
+
+-- 当該産休育休レコードは、産休のみ (Case12)
+ELSIF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS <> C_SYUTOKU_STATUS_SYUTOKU
+    AND row_yukyu_ikukyu.DETAIL_SANGO_KYUMU_STATUS = C_SYUTOKU_STATUS_SYUTOKU THEN
+    g_err_pos := '08100';
+
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        YUKYU_IKUKYU_SEQUENCE_NO = NULL
+    WHERE
+        PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+        AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+
+-- 全ての取消 (Case17)
+ELSIF row_yukyu_ikukyu.DETAIL_IKUKYU_STATUS <> C_SYUTOKU_STATUS_SYUTOKU
+    AND row_yukyu_ikukyu.DETAIL_SANGO_KYUMU_STATUS <> C_SYUTOKU_STATUS_SYUTOKU THEN
+    IF row_yukyu_ikukyu.DETAIL_SANKYU_SOSIN_FLG = C_FLG_OFF THEN
+        g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG := C_FLG_OFF;
+        g_row_syutu_kekkin_db.KANRI_STATUS_KBN := C_KANRI_STATUS_KBN_END;
+        g_row_syutu_kekkin_db.BYOMEI := C_DUMMY_BYOMEI;
+
+        UPDATE IHR_SYUTU_KEKKIN_DB
+        SET
+            SOSIN_TAISYO_FLG = g_row_syutu_kekkin_db.SOSIN_TAISYO_FLG,
+            KANRI_STATUS_KBN = g_row_syutu_kekkin_db.KANRI_STATUS_KBN,
+            BYOMEI = g_row_syutu_kekkin_db.BYOMEI
+        WHERE
+            PERSON_ID = row_yukyu_ikukyu.PERSON_ID
+            AND SEQUENCE_NO = row_yukyu_ikukyu.DB_SEQUENCE_NO;
+    END IF;
+END IF;
+
+-- 管理中データの終了処理
+FOR row_end_yukyu_kanri_status IN cur_end_yukyu_kanri_status(p_prev_syori_ymd => p_prev_syori_ymd) LOOP
+    UPDATE IHR_SYUTU_KEKKIN_DB
+    SET
+        CTRL_INFO = C_CTRL_INFO_UPD,
+        SOSIN_TAISYO_YM = p_syori_ym,
+        SOSIN_TAISYO_FLG = C_FLG_ON,
+        KANRI_STATUS_KBN = C_KANRI_STATUS_KBN_END,
+        LAST_UPDATE_DATE = C_LAST_UPDATE_DATE,
+        LAST_UPDATED_BY = C_LAST_UPDATED_BY,
+        LAST_UPDATE_LOGIN = C_LAST_UPDATE_LOGIN
+    WHERE
+        PERSON_ID = row_end_yukyu_kanri_status.PERSON_ID
+        AND SEQUENCE_NO = row_end_yukyu_kanri_status.SEQUENCE_NO;
+END LOOP;
+
+g_err_pos := '08700';
+
+EXCEPTION
+    WHEN EXC_MESSAGE_ERROR THEN
+        RAISE;
+    WHEN OTHERS THEN
+        RAISE;
+END YUKYU_IKUKYU_PROC;
+
+-- filepath: /c:/Users/81804/Desktop/hibiki/21
+
+-- PROCEDURE: RENZOKU_SINSEI_CHECK
+-- 育休終了後、復職せずに次の産休に入る場合は、初回の有給育休は取得できないため、欠勤IF情報作成処理により作成された有給育休レコードを無効化するメンテナンスが事務方にて行う可能性がある。
+-- 当チェックにより、その対象となる可能性のある申請をコンカレント結果ログに警告出力する。
+
+PROCEDURE RENZOKU_SINSEI_CHECK (
+    p_syori_ym IN VARCHAR2,
+    p_warning_cnt OUT NUMBER -- 警告件数を返す。
+) IS
+    -- プロシージャ内変数の宣言
+    l_warning_cnt NUMBER;
+    l_syori_ym VARCHAR2(6);
+    l_chk_cnt NUMBER;
+    l_renzoku_sequence_no NUMBER; -- 2008/09/22
+    l_renzoku_kekkin_kaisibi DATE; -- 2008/09/22
+
+    -- 送信対象となる産休育休レコードまたは有給育休欠勤レコードを取得
+    CURSOR cur_taisyo_record (
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT DISTINCT
+            db.KOIN_NO,
+            db.PERSON_ID
+        FROM
+            IHR_SYUTU_KEKKIN_DB db
+        WHERE
+            db.SOSIN_TAISYO_YM = p_syori_ym
+            AND db.SOSIN_TAISYO_FLG = C_FLG_ON
+            AND db.CTRL_INFO <> C_CTRL_INFO_DEL -- コントロール情報: 削除を除く
+            AND db.KEKKIN_JIYU IN (
+                C_KEKKIN_JIYU_YUKYU_IKUKYU,
+                C_KEKKIN_JIYU_SANKYU
+            );
+
+    -- 対象者の有給育休レコードを全て取得
+    CURSOR cur_all_yukyu_record (
+        p_person_id VARCHAR2
+    ) IS
+        SELECT
+            db.KOIN_NO,
+            db.PERSON_ID
+        FROM
+            IHR_SYUTU_KEKKIN_DB db
+        WHERE
+            db.PERSON_ID = p_person_id;
+BEGIN
+    -- 初期化
+    l_warning_cnt := 0;
+
+    -- 送信対象レコードのチェック
+    OPEN cur_taisyo_record(p_syori_ym);
+    LOOP
+        FETCH cur_taisyo_record INTO l_syori_ym, l_chk_cnt;
+        EXIT WHEN cur_taisyo_record%NOTFOUND;
+
+        -- 対象者の有給育休レコードのチェック
+        OPEN cur_all_yukyu_record(l_syori_ym);
+        LOOP
+            FETCH cur_all_yukyu_record INTO l_renzoku_sequence_no, l_renzoku_kekkin_kaisibi;
+            EXIT WHEN cur_all_yukyu_record%NOTFOUND;
+
+            -- 警告件数のカウント
+            l_warning_cnt := l_warning_cnt + 1;
+        END LOOP;
+        CLOSE cur_all_yukyu_record;
+    END LOOP;
+    CLOSE cur_taisyo_record;
+
+    -- 警告件数を返す
+    p_warning_cnt := l_warning_cnt;
+END RENZOKU_SINSEI_CHECK;
+
+
+-- ユーザー定義例外の宣言
+EXCEPTION
+    EXC_MESSAGE_ERROR;
+
+BEGIN
+    g_err_pos := '10000';
+
+    -- 変数初期化
+    l_syori_ym := p_syori_ym;
+    l_warning_cnt := 0;
+    l_renzoku_sequence_no := NULL; -- 2008/09/22
+    l_renzoku_kekkin_kaisibi := NULL; -- 2008/09/22
+    l_chk_cnt := 0;
+
+    g_err_pos := '10100';
+
+    -- 送信対象レコードのチェック
+    FOR row_taisyo_record IN cur_taisyo_record(p_syori_ym => l_syori_ym) LOOP
+        g_err_pos := '10200';
+
+        -- 対象者の全ての有給育休レコードを取得
+        FOR row_all_yukyu_record IN cur_all_yukyu_record(p_person_id => row_taisyo_record.PERSON_ID) LOOP
+            g_err_pos := '10300';
+
+            -- 変数初期化
+            l_renzoku_sequence_no := NULL; -- 2008/09/22
+            l_renzoku_kekkin_kaisibi := NULL; -- 2008/09/22
+            l_chk_cnt := 0;
+
+            g_err_pos := '10400';
+
+            BEGIN
+                -- それぞれ有給育休レコードの後ろ一ヶ月以内に開始する、産休育休または有給育休を取得
+                SELECT
+                    COUNT(db.PERSON_ID)
+                INTO
+                    l_chk_cnt
+                FROM
+                    IHR_SYUTU_KEKKIN_DB db
+                WHERE
+                    db.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU
+                    AND db.PERSON_ID = row_all_yukyu_record.PERSON_ID
+                    AND db.SOSIN_TAISYO_FLG = C_FLG_ON -- 送信フラグONの申請
+                    AND db.CTRL_INFO <> C_CTRL_INFO_DEL -- コントロール情報: 削除を除く
+                    AND db.KEKKIN_SYURYOBI BETWEEN row_all_yukyu_record.KEKKIN_SYURYOBI AND ADD_MONTHS(row_all_yukyu_record.KEKKIN_SYURYOBI, 1);
+
+                IF l_chk_cnt > 0 THEN
+                    -- 警告件数のカウント
+                    l_warning_cnt := l_warning_cnt + 1;
+                END IF;
+            END;
+
+            -- filepath: /c:/Users/81804/Desktop/hibiki/109.pkb
+
+g_err_pos := '10100';
+
+-- 送信対象レコードのチェック
+FOR row_taisyo_record IN cur_taisyo_record(p_syori_ym => l_syori_ym) LOOP
+    g_err_pos := '10200';
+
+    -- 対象者の全ての有給育休レコードを取得
+    FOR row_all_yukyu_record IN cur_all_yukyu_record(p_person_id => row_taisyo_record.PERSON_ID) LOOP
+        g_err_pos := '10300';
+
+        -- 変数初期化
+        l_renzoku_sequence_no := NULL; -- 2008/09/22
+        l_renzoku_kekkin_kaisibi := NULL; -- 2008/09/22
+        l_chk_cnt := 0;
+
+        g_err_pos := '10400';
+
+        BEGIN
+            -- それぞれ有給育休レコードの後ろ一ヶ月以内に開始する、産休育休または有給育休を取得
+            SELECT
+                COUNT(db.PERSON_ID)
+            INTO
+                l_chk_cnt
+            FROM
+                IHR_SYUTU_KEKKIN_DB db
+            WHERE
+                db.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU
+                AND db.PERSON_ID = row_all_yukyu_record.PERSON_ID
+                AND db.SEQUENCE_NO <> row_all_yukyu_record.SEQUENCE_NO
+                AND db.SOSIN_TAISYO_FLG = C_FLG_ON -- 送信フラグONの申請
+                AND db.CTRL_INFO <> C_CTRL_INFO_DEL -- コントロール情報: 削除を除く
+                AND db.KEKKIN_SYURYOBI BETWEEN row_all_yukyu_record.KEKKIN_SYURYOBI AND ADD_MONTHS(row_all_yukyu_record.KEKKIN_SYURYOBI, 1);
+
+            IF l_chk_cnt > 0 THEN
+                -- 警告件数のカウント
+                l_warning_cnt := l_warning_cnt + 1;
+            END IF;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                g_err_pos := '10600';
+                l_chk_cnt := 0;
+        END;
+
+        g_err_pos := '10500';
+
+        -- 後ろ一ヶ月以内に開始するレコードがあれば警告出力
+        IF l_chk_cnt <> 0 THEN
+            g_err_pos := '10700';
+            IHRCSBTOO_PKG.PUT_MSG(
+                p_msgid => 'IHRHR719',
+                p_token_1 => row_all_yukyu_record.KOIN_NO,
+                p_token_2 => row_all_yukyu_record.SEQUENCE_NO,
+                p_token_3 => TO_CHAR(row_all_yukyu_record.KEKKIN_SYURYOBI, 'YYYY/MM/DD')
+            );
+            g_err_pos := '10800';
+            RAISE EXC_MESSAGE_ERROR;
+        END IF;
+    END LOOP;
+END LOOP;
+
+g_err_pos := '10900';
+p_warning_cnt := l_warning_cnt;
+
+EXCEPTION
+    WHEN EXC_MESSAGE_ERROR THEN
+        RAISE;
+    WHEN OTHERS THEN
+        RAISE;
+END RENZOKU_SINSEI_CHECK;
+
+/* PROCEDURE: SEIDO_MAE_SINSEI_CHECK
+   制度開始日前に開始された有給育休レコードが存在する場合ログ出力する */
+
+PROCEDURE SEIDO_MAE_SINSEI_CHECK (
+    p_syori_ym IN VARCHAR2,
+    p_warning_cnt OUT NUMBER -- 警告件数を返す。
+) IS
+    -- プロシージャ内変数の宣言
+    l_warning_cnt NUMBER;
+    l_yukyu_ikukyu_start_date DATE;
+    l_syori_ym VARCHAR2(6);
+
+    -- 制度開始日前に開始された有給育休欠勤レコードを取得
+    CURSOR cur_taisyo_record (
+        p_yukyu_ikukyu_start_date DATE,
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT
+            db.KOIN_NO,
+            db.PERSON_ID,
+            db.KEKKIN_KAISIBI,
+            db.KEKKIN_SYURYOBI,
+            db.SEQUENCE_NO
+        FROM
+            IHR_SYUTU_KEKKIN_DB db
+        WHERE
+            db.SOSIN_TAISYO_YM = p_syori_ym
+            AND db.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU
+            AND db.KEKKIN_KAISIBI < p_yukyu_ikukyu_start_date
+            AND db.SOSIN_TAISYO_FLG = C_FLG_ON; -- 送信フラグONの申請
+
+    -- ユーザー定義例外の宣言
+    EXCEPTION
+        EXC_MESSAGE_ERROR;
+
+BEGIN
+    g_err_pos := '12300';
+
+    -- 変数初期化
+    l_warning_cnt := 0;
+    l_yukyu_ikukyu_start_date := NULL;
+    l_syori_ym := p_syori_ym;
+
+    g_err_pos := '12400';
+
+    BEGIN
+        SELECT
+            TO_DATE(MEANING, 'YYYYMMDD')
+        INTO
+            l_yukyu_ikukyu_start_date
+        FROM
+            FND_LOOKUP_VALUES
+        WHERE
+            LOOKUP_TYPE = 'IHR_YUKYU_IKUKYU_START_DATE'
+            AND LANGUAGE = 'JA'
+            AND LOOKUP_CODE = '1';
+
+        g_err_pos := '12500';
+    EXCEPTION
+        WHEN OTHERS THEN
+            RAISE;
+    END;
+
+    g_err_pos := '12600';
+
+    FOR row_taisyo_record IN cur_taisyo_record(
+        p_yukyu_ikukyu_start_date => l_yukyu_ikukyu_start_date,
+        p_syori_ym => l_syori_ym
+    ) LOOP
+        g_err_pos := '12700';
+
+        IF NOT IHRCSBTOO_PKG.PUT_MSG(
+            p_msgid => 'IHRHR720',
+            p_token_1 => row_taisyo_record.KOIN_NO,
+            p_token_2 => row_taisyo_record.SEQUENCE_NO,
+            p_token_3 => TO_CHAR(row_taisyo_record.KEKKIN_KAISIBI, 'YYYY/MM/DD'),
+            p_token_4 => TO_CHAR(row_taisyo_record.KEKKIN_SYURYOBI, 'YYYY/MM/DD')
+        ) THEN
+            g_err_pos := '12800';
+            RAISE EXC_MESSAGE_ERROR;
+        END IF;
+
+        l_warning_cnt := l_warning_cnt + 1;
+    END LOOP;
+
+    g_err_pos := '12900';
+    p_warning_cnt := l_warning_cnt;
+END SEIDO_MAE_SINSEI_CHECK;
+
+
+-- filepath: /c:/Users/81804/Desktop/hibiki/109.pkb
+
+p_warning_cnt := l_warning_cnt;
+
+EXCEPTION
+    WHEN EXC_MESSAGE_ERROR THEN
+        RAISE;
+    WHEN OTHERS THEN
+        RAISE;
+END SEIDO_MAE_SINSEI_CHECK;
+
+-- PROCEDURE: ONAJI_SYUSSANBI_SINSEI_CHECK
+-- 同じ出産日で複数の育休申請が存在するかチェック
+-- 二回目以降の有給育休期間は無しとするため、手動メンテナンスが必要。
+-- 当チェックにより、その対象となる可能性ある申請を抽出する。
+
+PROCEDURE ONAJI_SYUSSANBI_SINSEI_CHECK (
+    p_syori_ym IN VARCHAR2,
+    p_warning_cnt OUT NUMBER -- 警告件数を返す。
+) IS
+    -- プロシージャ内変数の宣言
+    l_warning_cnt NUMBER;
+    l_syori_ym VARCHAR2(6);
+    l_chk_cnt NUMBER;
+    l_onaji_syussanbi_seq_no NUMBER; -- 2008/09/22
+    l_onaji_syussanbi_kaisi DATE; -- 2008/09/22
+
+    -- 今回送信対象の有給育休レコードの出産(予定)日を取得
+    CURSOR cur_taisyo_record (
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT
+            db.KOIN_NO,
+            db.PERSON_ID,
+            db.KEKKIN_KAISIBI,
+            NVL(isid.SYUSSANBI, isid.SYUSSAN_YOTEIBI) AS SYUSSANBI,
+            db.SEQUENCE_NO
+        FROM
+            IHR_SYUTU_KEKKIN_DB db,
+            IHR_SANKYU_IKUKYU_DETAILS isid
+        WHERE
+            db.SOSIN_TAISYO_YM = p_syori_ym
+            AND db.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU
+            AND db.PERSON_ID = isid.PERSON_ID
+            AND db.SEQUENCE_NO = isid.YUKYU_TKUKYU_SEQUENCE_NO
+            AND db.SOSIN_TAISYO_FLG = C_FLG_ON -- 送信フラグONの申請
+            AND db.CTRL_INFO <> C_CTRL_INFO_DEL; -- コントロール情報: 削除を除く
+
+    -- ユーザー定義例外の宣言
+    EXCEPTION
+        EXC_MESSAGE_ERROR;
+
+BEGIN
+    g_err_pos := '13000';
+
+    -- 変数初期化
+    l_warning_cnt := 0;
+    l_syori_ym := p_syori_ym;
+    l_chk_cnt := 0;
+
+    g_err_pos := '13100';
+
+    -- 送信対象の有給育休を取得
+    FOR row_taisyo_record IN cur_taisyo_record(p_syori_ym => l_syori_ym) LOOP
+        g_err_pos := '13200';
+
+        -- 同じ出産日の有給育休レコードを検索
+        BEGIN
+            SELECT
+                COUNT(db.PERSON_ID)
+            INTO
+                l_chk_cnt
+            FROM
+                IHR_SYUTU_KEKKIN_DB db,
+                IHR_SANKYU_IKUKYU_DETAILS isid
+            WHERE
+                NVL(isid.SYUSSANBI, isid.SYUSSAN_YOTEIBI) = row_taisyo_record.SYUSSANBI
+                AND isid.PERSON_ID = row_taisyo_record.PERSON_ID
+                AND db.PERSON_ID = isid.PERSON_ID
+                AND isid.YUKYU_IKUKYU_SEQUENCE_NO = db.SEQUENCE_NO
+                AND db.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU
+                AND db.SEQUENCE_NO <> row_taisyo_record.SEQUENCE_NO
+                AND db.CTRL_INFO <> C_CTRL_INFO_DEL; -- コントロール情報: 削除を除く
+
+            g_err_pos := '13300';
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                l_chk_cnt := 0;
+        END;
+
+        -- 同じ出産日の有給育休レコードがある場合は警告ログ出力
+        IF l_chk_cnt <> 0 THEN
+            g_err_pos := '13400';
+            IF NOT IHRCSBTOO_PKG.PUT_MSG(
+                p_msgid => 'IHRHR721',
+                p_token_1 => row_taisyo_record.KOIN_NO,
+                p_token_2 => row_taisyo_record.SEQUENCE_NO,
+                p_token_3 => TO_CHAR(row_taisyo_record.KEKKIN_KAISIBI, 'YYYY/MM/DD')
+            ) THEN
+                RAISE EXC_MESSAGE_ERROR;
+            END IF;
+            l_warning_cnt := l_warning_cnt + 1;
+        END IF;
+    END LOOP;
+
+    g_err_pos := '13500';
+    p_warning_cnt := l_warning_cnt;
+
+EXCEPTION
+    WHEN EXC_MESSAGE_ERROR THEN
+        RAISE;
+    WHEN OTHERS THEN
+        RAISE;
+END ONAJI_SYUSSANBI_SINSEI_CHECK;
+
+-- PROCEDURE: END_DATE_CHECK
+-- 今回送信対象のデータのうち育休明細の終了日と作成された出欠勤DBの有給育休レコードの終了日が一致しているかをチェック
+
+PROCEDURE END_DATE_CHECK (
+    p_syori_ym IN VARCHAR2,
+    p_warning_cnt OUT NUMBER -- 警告件数を返す。
+) IS
+    -- プロシージャ内変数の宣言
+    l_warning_cnt NUMBER;
+    l_syori_ym VARCHAR2(6);
+
+    -- 対象レコードを取得
+    CURSOR cur_taisyo_record (
+        p_syori_ym VARCHAR2
+    ) IS
+        SELECT
+            isid.KOIN_NO,
+            isid.SEQUENCE_NO,
+            NVL(isid.IKUKYU_SYURYOBI, isid.IKUKYU_SYURYO_YOTEIBI) AS DETAIL_END_DATE,
+            iskd.KEKKIN_SYURYOBI AS DB_END_DATE
+        FROM
+            IHR_SANKYU_IKUKYU_DETAILS isid,
+            IHR_SYUTU_KEKKIN_DB iskd
+        WHERE
+            isid.KOIN_NO = iskd.KOIN_NO
+            AND isid.YUKYU_IKUKYU_SEQUENCE_NO = iskd.SEQUENCE_NO
+            AND NVL(isid.IKUKYU_SYURYOBI, isid.IKUKYU_SYURYO_YOTEIBI) <> iskd.KEKKIN_SYURYOBI
+            AND iskd.SOSIN_TAISYO_FLG = C_FLG_ON
+            AND iskd.SOSIN_TAISYO_YM = p_syori_ym
+            AND iskd.KEKKIN_JIYU = C_KEKKIN_JIYU_YUKYU_IKUKYU;
+
+    -- ユーザー定義例外の宣言
+    EXCEPTION
+        EXC_MESSAGE_ERROR;
+
+BEGIN
+    g_err_pos := '13600';
+
+    -- 変数初期化
+    l_warning_cnt := 0;
+    l_syori_ym := p_syori_ym;
+
+    g_err_pos := '13700';
+
+    FOR row_taisyo_record IN cur_taisyo_record(p_syori_ym => l_syori_ym) LOOP
+        g_err_pos := '13800';
+
+        IF NOT IHRCSBTOO_PKG.PUT_MSG(
+            p_msgid => 'IHRHR773',
+            p_token_1 => TO_CHAR(row_taisyo_record.DETAIL_END_DATE, 'YYYY/MM/DD'),
+            p_token_2 => TO_CHAR(row_taisyo_record.DB_END_DATE, 'YYYY/MM/DD'),
+            p_token_3 => row_taisyo_record.KOIN_NO,
+            p_token_4 => row_taisyo_record.SEQUENCE_NO
+        ) THEN
+            g_err_pos := '13900';
+            RAISE EXC_MESSAGE_ERROR;
+        END IF;
+
+        l_warning_cnt := l_warning_cnt + 1;
+    END LOOP;
+
+    g_err_pos := '14000';
+    p_warning_cnt := l_warning_cnt;
+
+EXCEPTION
+    WHEN EXC_MESSAGE_ERROR THEN
+        RAISE;
+    WHEN OTHERS THEN
+        RAISE;
+END END_DATE_CHECK;
+
+
+
