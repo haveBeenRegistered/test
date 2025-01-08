@@ -203,3 +203,201 @@ private void updateKkssShinsei(List<RkIfsskekinDto> sosinData) {
 
 
 }
+
+
+
+
+
+
+WITH saishin_ss_shinsei AS (
+    SELECT
+        *
+    FROM
+        rk_ss_shinsei_joho_tbl ss
+    WHERE
+        ss.shinsei_status = '2'
+        AND COALESCE(ss.if_soshin_zumi_kbn, '0') = '0'
+        AND ss.kaisha_cd = 100
+        AND ss.delete_flg = false
+),
+henko_mae AS (
+    -- 変更前のレコードがIF送信済であれば削除のため取得する
+    SELECT
+        henko_mae.*
+    FROM
+        saishin_ss_shinsei saishin,
+        rk_ss_shinsei_joho_tbl henko_mae
+    WHERE
+        saishin.user_id = henko_mae.user_id
+        AND saishin.sequence_no = henko_mae.sequence_no
+        AND COALESCE(henko_mae.if_soshin_zumi_kbn, '0') = '1'
+),
+soshin_taisho_ss AS (
+    -- 最新のデータと変更前のデータをUNION
+    SELECT
+        CASE
+            WHEN saishin.ss_shinsei_kbn = '9' THEN 'D'
+            ELSE 'C'
+        END ctrl_info,
+        '1' soshingo_shori_kbn,
+        saishin.*
+    FROM
+        saishin_ss_shinsei saishin
+    LEFT OUTER JOIN henko_mae
+    ON saishin.user_id = henko_mae.user_id
+    AND saishin.sequence_no = henko_mae.sequence_no
+    WHERE
+        NOT (henko_mae.ss_shinsei_joho_id IS NULL
+        AND saishin.ss_shinsei_kbn = '9')
+    UNION
+    SELECT
+        'D' ctrl_info,
+        '99' soshingo_shori_kbn,
+        henko_mae.*
+    FROM
+        henko_mae,
+        saishin_ss_shinsei saishin
+    WHERE
+        saishin.user_id = henko_mae.user_id
+        AND saishin.sequence_no = henko_mae.sequence_no
+        AND saishin.ss_shinsei_kbn != '9'
+),
+kaigai AS (
+    -- 海外勤務者を除外するため、期間中の渡航履歴があるレコードのIDを取得
+    SELECT
+        saishin.ss_shinsei_joho_id
+    FROM
+        saishin_ss_shinsei saishin,
+        rk_toko_rireki_tbl toko
+    WHERE
+        toko.user_id = saishin.user_id
+        AND (
+            (toko.shukokubi < saishin.sankyu_ikukyu_shuryobi
+            AND toko.nyukokubi > saishin.sankyu_ikukyu_kaishibi)
+            OR toko.nyukokubi IS NULL
+        )
+        AND toko.delete_flg = false
+),
+kazoku_temp AS (
+    SELECT
+        soshin_ss.ss_shinsei_joho_id,
+        kazoku_mst.kazoku_shimei_mei AS mei,
+        kazoku_mst.tsuzukigara AS tsuzuki_gara
+    FROM
+        soshin_taisho_ss soshin_ss,
+        rk_kazoku_joho_mst_tbl kazoku_mst
+    WHERE
+        soshin_ss.user_id = kazoku_mst.user_id
+        AND soshin_ss.shusanbi = kazoku_mst.seinengapi
+        AND CURRENT_DATE >= kazoku_mst.valid_period_sd
+        AND CURRENT_DATE <= kazoku_mst.valid_period_ed
+        AND kazoku_mst.delete_flg = false
+    ORDER BY
+        kazoku_mst.kazoku_joho_mst_id
+),
+kazoku AS (
+    SELECT
+        kazoku_temp.ss_shinsei_joho_id,
+        STRING_AGG(kazoku_temp.mei, ',') AS mei,
+        STRING_AGG(kazoku_temp.tsuzuki_gara, ',') AS tsuzuki_gara
+    FROM
+        kazoku_temp
+    GROUP BY
+        kazoku_temp.ss_shinsei_joho_id
+)
+SELECT
+    ss.ctrl_info,
+    ss.kaisha_cd,
+    bc_user.jugyoin_no,
+    ss.sequence_no,
+    CASE
+        WHEN ss.ss_shinsei_kbn IN ('3', '9') THEN '0'
+        ELSE '1'
+    END AS kanri_jokyo,
+    ss.shusanbi,
+    ss.shusan_yoteibi,
+    ss.sanzen_tokukyu_kaishibi,
+    CASE
+        WHEN ss.sanzen_tokukyu_kaishibi IS NULL THEN NULL
+        ELSE ss.sanzen_kyumu_kaishibi
+    END AS sanzen_tokukyu_shuryobi,
+    ss.sanzen_kyumu_kaishibi,
+    CASE
+        WHEN ss.sanzen_kyumu_kaishibi IS NULL THEN NULL
+        ELSE COALESCE(ss.shusanbi, ss.shusan_yoteibi)
+    END AS sanzen_kyumu_shuryobi,
+    CASE
+        WHEN ss.sango_kyumu_shuryo_yoteibi IS NULL
+        AND ss.sango_kyumu_shuryobi IS NULL THEN NULL
+        WHEN ss.shusanbi IS NULL THEN ss.shusan_yoteibi + 1
+        ELSE ss.shusanbi + 1
+    END AS sango_kyumu_kaishibi,
+    COALESCE(ss.sango_kyumu_shuryobi, ss.sango_kyumu_shuryo_yoteibi) AS sango_kyumu_shuryobi,
+    ss.ikukyu_kaishibi,
+    COALESCE(ss.ikukyu_shuryobi, ss.ikukyu_shuryo_yoteibi) AS ikukyu_shuryobi,
+    ss.sankyu_ikukyu_kaishibi AS tosho_kekin_kaishibi,
+    ss.tatai_ninshin_flg,
+    kazoku.mei AS ikuji_taisho_shimei,
+    kazoku.tsuzuki_gara AS ikuji_taisho_tsuzukigara,
+    ss.ss_shinsei_joho_id,
+    ss.soshingo_shori_kbn
+FROM
+    soshin_taisho_ss ss
+LEFT OUTER JOIN kazoku
+ON ss.ss_shinsei_joho_id = kazoku.ss_shinsei_joho_id
+LEFT OUTER JOIN bc_user_tbl bc_user
+ON ss.user_id = bc_user.user_id
+WHERE
+    soshin_ss.user_id = bc_user.user_id 
+    AND NOT EXISTS (
+        SELECT 
+            * 
+        FROM 
+            kaigai 
+        WHERE 
+            soshin_ss.ss_shinsei_joho_id = kaigai.ss_shinsei_joho_id
+    )
+    AND bc_user.delete_flg = false
+SELECT
+    ss.ctrl_info AS ctrl_info,
+    ss.kaisha_cd AS kaisha_cd,
+    ss.jugyoin_no AS jugyoin_no,
+    CAST(ss.sequence_no AS character varying) AS sequence_no,
+    ss.kanri_jokyo AS kanri_jokyo,
+    NULL AS kekin_kaishibi,
+    NULL AS first_eigyobi_fig,
+    NULL AS kekin_shuryobi,
+    NULL AS last_eigyobi_flg,
+    '3' AS kekin_jiyu,
+    '産休育休' AS byomei,
+    NULL AS kaigo_taisho_shimei,
+    NULL AS kaigo_taisho_tsuzukigara,
+    TO_CHAR(ss.shusanbi, 'YYYYMMDD') AS shusanbi,
+    TO_CHAR(ss.shusan_yoteibi, 'YYYYMMDD') AS shusan_yoteibi,
+    TO_CHAR(ss.sanzen_tokukyu_kaishibi, 'YYYYMMDD') AS sanzen_tokukyu_kaishibi,
+    TO_CHAR(ss.sanzen_tokukyu_shuryobi, 'YYYYMMDD') AS sanzen_tokukyu_shuryobi,
+    TO_CHAR(ss.sanzen_kyumu_kaishibi, 'YYYYMMDD') AS sanzen_kyumu_kaishibi,
+    TO_CHAR(ss.sanzen_kyumu_shuryobi, 'YYYYMMDD') AS sanzen_kyumu_shuryobi,
+    TO_CHAR(ss.sango_kyumu_kaishibi, 'YYYYMMDD') AS sango_kyumu_kaishibi,
+    TO_CHAR(ss.sango_kyumu_shuryobi, 'YYYYMMDD') AS sango_kyumu_shuryobi,
+    TO_CHAR(ss.ikukyu_kaishibi, 'YYYYMMDD') AS ikukyu_kaishibi,
+    TO_CHAR(ss.ikukyu_shuryobi, 'YYYYMMDD') AS ikukyu_shuryobi,
+    TO_CHAR(ss.tosho_kekin_kaishibi, 'YYYYMMDD') AS tosho_kekin_kaishibi,
+    ss.tatai_ninshin_flg AS tatai_ninshin_flg,
+    ss.ikuji_taisho_shimei AS ikuji_taisho_shimei,
+    ss.ikuji_taisho_tsuzukigara AS ikuji_taisho_tsuzukigara,
+    NULL AS kkss_shinsei_joho_id,
+    CAST(ss.ss_shinsei_joho_id AS character varying) AS ss_shinsei_joho_id,
+    ss.soshingo_shori_kbn AS soshingo_shori_kbn
+FROM
+    SS
+ORDER BY
+    ss.kaisha_cd,
+    ss.jugyoin_no,
+    CAST(ss.sequence_no AS integer),
+    ss.ctrl_info DESC;
+
+
+
+
+
