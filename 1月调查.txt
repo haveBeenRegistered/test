@@ -27,3 +27,363 @@ IHR_KEKKIN_DETAILS
 老系统的SEQUENCE_ID等于现系统sequence_no
 person_id等于user_id
 
+
+
+
+
+
+
+
+
+
+Private Sub writeWstDataYoko(ByRef loRS As ADODB.Recordset, ByRef inSheet As Excel.Worksheet)
+
+    ' 行カウント変数
+    Dim intRow As Long
+
+    ' 列カウント変数
+    Dim intCol As Integer
+
+    ' 列数保持変数
+    Dim intColCount As Integer
+
+    ' ヘッダデータ格納配列
+    Dim Header() As String
+
+    ' データ格納配列
+    Dim DataRows() As Variant
+
+    ' If wstSetup.Cells(15, 4).Value = "oo" Then
+    If wstSetup.Cells(15, 4).Value = "oo" Then
+        DATA_MAX = 65535
+    Else
+        DATA_MAX = wstSetUp.Cells(15, 4).Value
+    End If
+    ' End If
+
+    ' 2008/04/10 縦に出すので値を制限
+    DATA_MAX = 256
+
+    With inSheet
+        ' 描画一時停止
+        Application.ScreenUpdating = False
+
+        ' セルのクリア
+        Range("B1").Select
+        Cells.Clear
+
+        .Cells.NumberFormatLocal = "G/標準"
+
+' ヘッダの処理
+
+' カラム数のカウント
+intColCount = loRS.Fields.Count
+
+' 動的変数の定義(ヘッダ用)
+ReDim Preserve Header(1 To 1, 1 To intColCount) As String
+ReDim Preserve Header(1 To intColCount, 1 To 1) As String
+
+' カラム名を配列に読み込む
+For intCol = 0 To intColCount - 1
+    Header(1, intCol + 1) = loRS.Fields(intCol).Name
+    ' 2008/04/10 縦に出す
+    Header(intCol + 1, 1) = loRS.Fields(intCol).Name
+    
+    If loRS.Fields(intCol).Type = ADODB.adNumeric Then
+        ' 数字型の場合
+    ElseIf loRS.Fields(intCol).Type = ADODB.adDBTimeStamp Then
+        ' 日付型の場合
+    Else
+        ' その他は文字列
+        Columns(intCol + 1).NumberFormatLocal = "@"
+    End If
+Next intCol
+
+' 2008/04/10 縦に出す
+Rows(intCol + 1).NumberFormatLocal = "
+
+' カラムスタイルをすべて文字列に変更
+Columns(intColCount).NumberFormatLocal = "
+
+' ヘッダーを一括インポート
+Range(.Cells(1, 1), .Cells(1, intColCount)).Value = Header
+
+' 2008/04/10 縦に出す
+Range(.Cells(1, 1), .Cells(intColCount, 1)).Value = Header
+
+' データの処理
+
+' 動的変数の定義(データ用)
+ReDim Preserve DataRows(DATA_START To DATA_MAX + 2, 1 To intColCount) As Variant
+' 2008/04/10 値を縦に出す
+ReDim Preserve DataRows(1 To intColCount, DATA_START To DATA_MAX) As Variant
+
+intRow = DATA_START
+
+Do While Not loRS.EOF And intRow <= DATA_MAX - 1
+    ' データを配列に読み込む
+    For intCol = 0 To intColCount - 1
+        ' DataRows(intRow, intCol + 1) = loRS.Fields(intCol).Value
+        ' 2008/04/10 縦に出す
+        DataRows(intCol + 1, intRow) = loRS.Fields(intCol).Value
+
+Next
+
+intRow = intRow + 1
+loRS.MoveNext
+
+Loop
+
+' 行員フリー席
+' 95.72.43.122
+
+If intRow <> DATA_START Then
+    ' データの書き込み
+    Range(Cells(DATA_START, 1), Cells(intRow, intColCount)).Value = DataRows
+    ' 2008/04/10 縦に出す
+    Range(Cells(1, 2), Cells(intColCount, intRow)).Value = DataRows
+End If
+
+' カラム幅を調整
+Cells.EntireColumn.AutoFit
+
+' 描画再開
+Application.ScreenUpdating = True
+
+End With
+End Sub
+
+' ワークシートに記載
+Private Sub write_stData(ByRef loRS As ADODB.Recordset, ByRef inSheet As Excel.Worksheet)
+
+' 行カウント変数
+Dim intRow As Long
+
+' 列カウント変数
+Dim intCol As Integer
+
+' 列数保持変数
+Dim intColCount As Integer
+
+' ヘッダデータ格納配列
+Dim Header() As String
+
+' データ格納配列
+Dim DataRows() As Variant
+
+If wstSetUp.Cells(15, 4).Value < 65536 Then
+    DATA_MAX = wstSetUp.Cells(15, 4).Value
+Else
+    DATA_MAX = 65536
+End If
+
+With inSheet
+    ' 描画一時停止
+    Application.ScreenUpdating = False
+
+
+' 選択
+.Select
+.Range("A1").Select
+.Cells.Clear
+.Cells.NumberFormatLocal = "G/標準"
+
+' カラム数のカウント
+intColCount = loRS.Fields.Count
+
+' 動的変数の定義(ヘッダ用)
+ReDim Preserve Header(1 To 1, 1 To intColCount) As String
+
+' カラム名を配列に読み込む
+For intCol = 0 To intColCount - 1
+    Header(1, intCol + 1) = loRS.Fields(intCol).Name
+    
+    If loRS.Fields(intCol).Type = ADODB.adNumeric Then
+        ' 数字型の場合
+    ElseIf loRS.Fields(intCol).Type = ADODB.adDBTimeStamp Then
+        ' 日付型の場合
+    Else
+        ' その他は文字列
+        Columns(intCol + 1).NumberFormatLocal = "@"
+    End If
+Next intCol
+
+' カラムスタイルをすべて文字列に変更
+Columns(intColCount).NumberFormatLocal = "0"
+
+' ヘッダーを一括インポート
+Range(.Cells(1, 1), .Cells(1, intColCount)).Value = Header
+
+' データの処理
+' 動的変数の定義(データ用)
+ReDim Preserve DataRows(DATA_START To DATA_MAX + 2, 1 To intColCount) As Variant
+
+intRow = DATA_START
+
+Do While Not loRS.EOF And intRow <= DATA_MAX + 1
+    ' データを配列に読み込む
+    For intCol = 0 To intColCount - 1
+        DataRows(intRow, intCol + 1) = loRS.Fields(intCol).Value
+    Next intCol
+    intRow = intRow + 1
+    loRS.MoveNext
+Loop
+
+If intRow <> DATA_START Then
+    ' データの書き込み
+    Range(Cells(DATA_START, 1), Cells(intRow, intColCount)).Value = DataRows
+    ' 2008/04/10 縦に出す
+    Range(Cells(1, 2), Cells(intColCount, intRow)).Value = DataRows
+End If
+
+' カラム幅を調整
+Cells.EntireColumn.AutoFit
+
+' 描画再開
+Application.ScreenUpdating = True
+
+End With
+End Sub
+
+' 接続文字列の取得
+Private Function getConnectString() As String
+
+    Dim intRow As Integer
+
+    ' 初期値設定
+    intRow = 1
+
+    Do
+        intRow = intRow + 1
+    Loop Until wstSetup.Cells(intRow, 1).Value = "ACTIVE" Or intRow = 7
+
+    getConnectString = "DRIVER={Microsoft ODBC for Oracle};SERVER=" & wstSetup.Cells(intRow, 4).Value & ";UID=" & wstSetup.Cells(intRow, 2).Value & ";PWD=" & wstSetup.Cells(intRow, 3).Value & ";"
+
+End Function
+
+' SQL取得関数
+' SQLのエクセルシートからSQLを取得します。
+Sub executeQuery()
+
+    Dim myConn As ADODB.Connection
+    Dim recSet As ADODB.Recordset
+    Dim dbCommand As ADODB.Command
+    Dim paramCount As Integer
+    Dim timer As TimeCount
+
+    ' ADODB.Commandクラスのインスタンスを生成
+    Set dbCommand = New ADODB.Command
+
+    ' TimeCountクラスのインスタンスを生成
+    Set timer = New TimeCount
+
+    ' ADODB.Connectionクラスのインスタンス生成
+    ' ... (実際の接続設定とSQL実行処理を追加)
+    
+' Set myConn
+Set myConn = New ADODB.Connection
+
+' ADODB.Recordsetクラスのインスタンス生成
+Set recSet = New ADODB.Recordset
+
+' 接続のエラートラップ
+On Error GoTo OpenErr
+
+' 接続文字列を使って接続
+myConn.Open getConnectString()
+
+' 接続のエラートラップ
+On Error GoTo ConnCloseHd
+
+With recSet
+
+    ' コネクションをセット
+    dbCommand.ActiveConnection = myConn
+    dbCommand.CommandText = getQuery()
+    dbCommand.CommandType = adCmdText
+    
+    paramCount = dbCommand.Parameters.Count
+    
+    For paramCount = 0 To dbCommand.Parameters.Count - 1
+        dbCommand(paramCount) = getParam(paramCount)
+    Next paramCount
+
+    Call timer.setTime
+
+    Set recSet = dbCommand.Execute
+
+    Application.StatusBar = timer.getTime()
+
+    ' Recordset Trap
+    On Error GoTo RSCloseHd1
+
+    ' 書き込み処理
+    If wstSetUp.Range("B14").Value = True Then
+        Call writeWstDataYoko(recSet, wstData)
+    Else
+        Call writeWstData(recSet, wstData)
+    End If
+
+RSCloseHd1:
+    ' close recordset
+    recSet.Close
+
+End With
+
+ConnCloseHd1:
+    ' 切断
+    myConn.Close
+
+
+' メッセージダイアログボックスを表示
+Set myConn = Nothing
+
+If Err.Number = 0 Then
+    ' 正常終了時の処理
+Else
+    MsgBox "終了", vbInformation
+    MsgBox Err.Description
+    Exit Sub
+End If
+
+OpenErr:
+    MsgBox Err.Description
+    End Sub
+
+' パラメーター取得ファンクション「番目のパラメーターを取得します
+Private Function getParam(ByVal i As Integer) As String
+    getParam = wstSQL.Cells(i + 3, 1).Value
+End Function
+
+' パフォーマンス測定用プロシージャ(デバック用)
+Sub getTime()
+
+    Dim myTime As Long
+
+    ' 測定開始
+    myTime = timeGetTime()
+
+    Call executeQuery
+
+    ' 測定終了(終了時刻 - 開始時刻)
+    myTime = timeGetTime() - myTime
+
+    Debug.Print "動作時間: " & myTime
+    MsgBox "動作時間: " & myTime
+
+End Sub
+
+' SQLのシートをクリアします
+Sub ClearSQL()
+
+    Range("B3:O87").Select
+    Range(Selection, ActiveCell.SpecialCells(xlLastCell)).Select
+    ActiveWindow.SmallScroll Down:=-10
+    Selection.Delete Shift:=xlUp
+
+End Sub
+
+' SQLをエディットします
+Sub EditSQL()
+
+End Sub
