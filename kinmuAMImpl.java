@@ -1,6 +1,6 @@
 public String 30tkinmuHotegaiHantel(int person_id, String kinmubi) {
-    String result = 1;
-    String sal;
+    String result = "";
+    String sql;
 
     BEGIN
     1: IHR_WF_KINMU.GET_HOTEGAI_HANTE120 +
@@ -10,8 +10,8 @@ public String 30tkinmuHotegaiHantel(int person_id, String kinmubi) {
     OracleCallableStatement stmt = null;
 
     try {
-        stmt = (OracleCallableStatement) getOADBTransaction().createCallableStatement(sal, 1);
-        stmt.registerOutParameter(1, Types.VARCHAR, 0.2);
+        stmt = (OracleCallableStatement) getOADBTransaction().createCallableStatement(sql, 1);
+        stmt.registerOutParameter(1, Types.VARCHAR, 0,2);
         stmt.setInt(2, person_id);
         stmt.setString(3, kinmubi);
         stmt.execute();
