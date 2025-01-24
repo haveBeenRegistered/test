@@ -239,3 +239,41 @@ if (CanFunc2.getConst("CKEIYAKU_SYAIN_SYOKUSYUQ").equalsIgnoreCase(recordRow.get
     // 其他方法...
 
 }
+
+
+
+
+CREATE OR REPLACE FUNCTION GET_HOTEGAI_HANTE120(
+    in_person_id IN NUMBER,
+    iv_kinmubi IN VARCHAR2
+) RETURN VARCHAR2 IS
+    ov_result VARCHAR2(2) := '0';
+    in_hotegai_goke NUMBER;
+    id_kinmubi DATE;
+    iv_kinmubi VARCHAR2(6);
+BEGIN
+    id_kinmubi := TO_DATE(iv_kinmubi, 'YYYYMMDD');
+    iv_kinmubi := TO_CHAR(id_kinmubi, 'YYYYMM');
+
+    SELECT SUM(kg.HOTEGAI_GOKE), SUM(NVL(ikkj.HOTEGAI_GOKE_KAIGAI, 0)) INTO in_hotegai_goke
+    FROM IHR_KINMU_GETUJI_JOHO kg
+    LEFT JOIN THR_KHS_KINMU_JOHO ikkj
+    ON kg.PERSON_ID = ikkj.PERSON_ID
+    AND kg.TAISYO_YM = ikkj.TAISYO_YM
+    AND kg.SAIRYO_FLAG = ikkj.SAIRYO_FLAG
+    AND kg.KANRI_KBN = ikkj.KANRI_KBN
+    AND ikkj.SYUKET_KBN = 1
+    AND ikkj.ENABLED_FLAG = 'Y'
+    WHERE kg.PERSON_ID = in_person_id
+    AND kg.TAISYO_YM = iv_kinmubi
+    GROUP BY kg.PERSON_ID, kg.TAISYO_YM, kg.KANRI_KBN, kg.SAIRYO_FLAG;
+
+    IF in_hotegai_goke > TO_NUMBER(THR_KINMU_COMMON.GET_KINMU_ENV_VALUE('KINMU_TYOKA', 'HOTEGAI_GOKE', 'TOGETU', 'TYOKA_WARNING_TIME')) * 60 THEN
+        ov_result := '1';
+    END IF;
+
+    RETURN ov_result;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE;
+END GET_HOTEGAI_HANTE120;
