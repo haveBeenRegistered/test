@@ -293,3 +293,58 @@ EXCEPTION
     WHEN OTHERS THEN
         RAISE;
 END GET_HOTEGAI_HANTE12;
+
+
+
+
+
+public void processFormRequestX(OAPageContext pageContext, DAlWebBean webBean) {
+    try {
+        // Get person ID from proxy manager
+        String personId = ProxyManager.getPersonId(pageContext);
+        PageTransition.setRedirectCurrentPage(pageContext);
+
+        // Get application module
+        EntyoListAMImpl myAm = (EntyoListAMImpl) pageContext.getApplicationModule(webBean);
+
+        // Next button handling
+        if (pageContext.getParameter("IhrNext") != null) {
+            myAm.raiseMeisaiValidation(pageContext.personId);
+            
+            if (!myAm.syoninChk(pageContext) && !ProxyManager.isProxy(pageContext)) {
+                // Create approval LOV (List of Values)
+                CommonLOVCO appLov = new CommonLOVCO();
+                
+                // Set approval values
+                appLov.setApprovalValue(pageContext, webBean, "EntyoSupervisor", "IhrEntyoJid");
+                appLov.setApprovalValue(pageContext, webBean, "EntyoDivisionChief", "IhrEntyoJid");
+
+                // Set forward URL for review page
+                pageContext.setForwardURL(
+                    "IHR_ENTYO_MEISAL_REVIEW", 
+                    null, 
+                    true, 
+                    OAException.ERROR
+                );
+
+                myAm.inputChkText();
+                myAm.setWarning();
+                myAm.setPoplist();
+            }
+        }
+
+        // Return button handling
+        if (pageContext.getParameter("IhrReturn") != null) {
+            pageContext.setForwardURL(
+                "IHR_ENTYO_LIST", 
+                null, 
+                true, 
+                OAException.ERROR
+            );
+        }
+
+    } catch (Exception e) {
+        // Raise runtime exception with original exception
+        BundledException.raiseRuntime(this.pageContext, e);
+    }
+}
