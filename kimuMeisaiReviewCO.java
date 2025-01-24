@@ -77,8 +77,159 @@ public class KinmuMeisaiReviewCO extends OASecondController {
             if (myAm.getKinmuHoteiGaiHantei(person_id, kinmuBi.equals("0"), Integer.parseInt(startDate), Integer.parseInt(kinmuBi))) {
                 msg06.setRendered(false);
             }
+// 人事企画Gr勤務担当者、勤務承認者・スタッフ人事による代理申請以外
+if (ProxyManager.isProxy(pageContext) && myAm.getKikakuStaffChk()) {
+    DAFRowLayoutBean bean4 = (DAFRowLayoutBean) webBean.findIndexedChildRecursive("IhrNest25");
+    bean4.setRendered(false);
 
-            // 他の処理...
+    DAStaticStyledTextBean bean5 = (DAStaticStyledTextBean) webBean.findIndexedChildRecursive("ThrMessage27");
+    bean5.setRendered(false);
+}
+
+// 替店長・企画Grによるオペレーションの場合、承認者入力項目を非表示とする
+if (butentyoCheckFlg) {
+    if (CanFunc2.getConst("C_RESP_MUSS").equalsIgnoreCase(myAm.getLoginResp())
+            || CanFunc2.getConst("CRESP_STAFF_JINJI").equalsIgnoreCase(myAm.getLoginResp())) {
+        CAMessageStyledTextBean bean2 = (CAMessageStyledTextBean) webBean.findIndexedChildRecursive("ThrkinmuRevSyonin");
+        bean2.setRendered(false);
+
+        OAMessageLovInputBean bean3 = (OAMessageLovInputBean) webBean.findIndexedChildRecursive("IhrkinmuinputBusitu");
+        bean3.setRendered(false);
+    }
+}
+
+// 行員番号がPから始まる行員の場合は非表示
+if (koinNo.substring(0, 1).equals("P")) {
+    DAMessageStyledTextBean kanribean = (DAMessageStyledTextBean) webBean.findIndexedChildRecursive("IhrkinmuRevkanri");
+    kanribean.setRendered(false);
+
+    DAMessageStyledTextBean sairyobean = (DAMessageStyledTextBean) webBean.findIndexedChildRecursive("IhrkinmuRevSairyo");
+    sairyobean.setRendered(false);
+}
+
+// 契約社員のパートタイマーで、申請月内の労働時間(含有休)が80時間を超えた場合にワーニングを返す
+KinmuInputRecordVORowImpl recordRow = (KinmuInputRecordVORowImpl) myAm.getKinmuInputRecordVO().first();
+if (recordRow != null && recordRow.getShuugyouKbn().equals("2")) { // 就業区分がパートタイマーの場合
+    if (equals(CanFunc.nvl(inputValue.getWarn()))) {
+        pageContext.putDialogMessage(new OAException("IHR", inputValue.getWarn(), null, OAException.WARNING, null));
+    }
+}
+
+// 在宅勤務申請日に8時~20時外の勤務をしている場合、ワーニングを返す
+if (equals(CanFunc.nvl(inputValue.getWarn11()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn11(), null, OAException.WARNING, null));
+}
+
+// ワーニングメッセージの表示を制御する
+if (equals(CanFunc.nvl(inputValue.getWarn1()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn1(), null, OAException.WARNING, null));
+}
+
+// 2011/09/10 契約社員の場合
+if (CanFunc2.getConst("CKEIYAKU_SYAIN_SYOKUSYU3").equalsIgnoreCase(recordRow.getSyokusyu())) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", "IHR_SELF_KINMU_INPUT_WARN_09", null, OAException.WARNING, null));
+} else {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn(), null, OAException.WARNING, null));
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn7()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn7(), null, OAException.WARNING, null));
+}
+
+OAMessageChoiceBean poplist = (OAMessageChoiceBean) webBean.findIndexedChildRecursive("ThrKinmuSaburokukbn");
+poplist.setPickListCacheEnabled(false);
+poplist.setListDisplayAttribute("Meaning");
+poplist.setListValueAttribute("Saburokukbn");
+poplist.setPickListViewUsageName("KinmuSaburokukbnListV01");
+
+if (CanFunc2.getConst("CKEIYAKU_SYAIN_SYOKUSYUQ").equalsIgnoreCase(recordRow.getSyokusyu())) {
+    DAStackLayoutBean entyoBean = (DAStackLayoutBean) webBean.findIndexedChildRecursive("threntyoSingle");
+    entyoBean.setRendered(false);
+
+    DAStackLayoutBean hideBean = (DAStackLayoutBean) webBean.findIndexedChildRecursive("IhrEntyoHide01");
+    hideBean.setRendered(false);
+} else {
+    DAStackLayoutBean entyoBean = (DAStackLayoutBean) webBean.findIndexedChildRecursive("IhrEntyoSingle01");
+    entyoBean.setRendered(false);
+
+    DAStackLayoutBean hideBean = (DAStackLayoutBean) webBean.findChildRecursive("IhrEntyoHide01");
+    hideBean.setRendered(false);
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn2()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn2(), null, OAException.WARNING, null));
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn3()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn3(), null, OAException.WARNING, null));
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn4()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn4(), null, OAException.WARNING, null));
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn5()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn5(), null, OAException.INFORMATION, null));
+}
+
+if (equals(CanFunc.nvl(inputValue.getWarn8()))) {
+    pageContext.putDialogMessage(
+            new OAException("IHR", inputValue.getWarn8(), null, OAException.INFORMATION, null));
+}
+
+CanFunc.setUnvalidated(webBean, "ThrReturn", true);
+
+if (CanFunc2.getConst("CKEIYAKU_SYAIN_SYOKUSYU3").equalsIgnoreCase(recordRow.getSyokusyu())) {
+    LOAMessageStyledTextBean tukinhiBean = (LOAMessageStyledTextBean) webBean.findChildRecursive("IhrKinmuRevMonTukinhi");
+    tukinhiBean.setDataType("NUMBER");
+
+    DAMessageStyledTextBean tyusyokuBean = (DAMessageStyledTextBean) webBean.findChildRecursive("IhrKineuRevMonTyusyoku");
+    tyusyokuBean.setDataType("NUMBER");
+}
+
+// OATableBeanの設定
+OATableBean waritable = (OATableBean) webBean.findIndexedChildRecursive("TheKinmul");
+waritable.prepareForRendering(pageContext);
+
+DataObjectList waricolumnFormat = waritable.getColumnFormats();
+DictionaryData hiben = (DictionaryData) waricolumnFormat.getItem(pageContext.findChildIndex(waritable, "Thikinmevarimashi"));
+hiben.put("CELL_NO_WRAP_FORMAT_KEY", Boolean.FALSE);
+hiben.put("COLUMN_DATA_FORMAT_KEY", "ICON_BUTTON_FORMAT");
+hiben.put("WIDTH_KEY", "140");
+
+DictionaryData ikho = (DictionaryData) waricolumnFormat.getItem(pageContext.findChildIndex(waritable, "ThrkinesRevkarimasi"));
+ikho.put("CELL_NO_WRAP_FORMAT_KEY", Boolean.FALSE);
+ikho.put("COLUMN_DATA_FORMAT_KEY", "ICON_BUTTON_FORMAT");
+ikho.put("WIDTH_KEY", "140");
+
+if (CanFunc2.getConst("CKEIYAKU_SYAIN_SYOKUSYUQ").equalsIgnoreCase(recordRow.getSyokusyu())) {
+    CAMessageStyledTextBean telierbean = (CAMessageStyledTextBean) webBean.findIndexedChildRecursive("ShekimReviellar");
+    telierbean.setRendered(false);
+
+    DAMessageStyledTextBean tukinhiBean = (DAMessageStyledTextBean) webBean.findIndexedChildRecursive("TheKinmuRevTukinhi");
+    tukinhiBean.setRendered(false);
+
+    OAMessageStyledTextBean rodojikanMonbean = (OAMessageStyledTextBean) webBean.findIndexedChildRecursive("IhrKineuReMonRodojikan");
+    rodojikanMonbean.setRendered(false);
+
+    DAMessageStyledTextBean teilerMonbean = (DAMessageStyledTextBean) webBean.findIndexedChildRecursive("IhrKineuReMonRodojikan");
+    teilerMonbean.setRendered(false);
+
+    OAMessageStyledTextBean tukinhiMonbean = (OAMessageStyledTextBean) webBean.findIndexedChildRecursive("IhrKineuRevMonTukinhi");
+    tukinhiMonbean.setRendered(false);
+
+    DAMessageStyledTextBean tyusyokuBean = (DAMessageStyledTextBean) webBean.findIndexedChildRecursive("ThuKineRevMonTyusyoku");
+    tyusyokuBean.setRendered(false);
+}
 
         } catch (Exception e) {
             e.printStackTrace();
