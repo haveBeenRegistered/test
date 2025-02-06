@@ -78,10 +78,9 @@ public class Auth2ServiceImpl implements Auth2Service {
 
     /** データパターン:日付 */
     private static final List<Pattern> DATE_PATTERNS = Arrays.asList(
-        Pattern.compile("^(\\d{4})/(\\d{1,2})/(\\d{1,2})$"),
-        Pattern.compile("^(\\d{4})年(\\d{1,2})月(\\d{1,2})日$"),
-        Pattern.compile("^(\\d{4}) (\\d{2}) (\\d{2})$")
-    );
+            Pattern.compile("^(\\d{4})/(\\d{1,2})/(\\d{1,2})$"),
+            Pattern.compile("^(\\d{4})年(\\d{1,2})月(\\d{1,2})日$"),
+            Pattern.compile("^(\\d{4}) (\\d{2}) (\\d{2})$"));
 
     /** 汎用コードセットID: 「GSRK00053:職責(労務管理)」 */
     private static final String GSRK00053 = "GSRK00053";
@@ -97,57 +96,48 @@ public class Auth2ServiceImpl implements Auth2Service {
 
     /** 付与区分:「02: 権限付与」または「03: メンテナンス付与」 */
     private static final List<FuyoKbn> KENGENFUYO_OR_MENTEFUYO = List.of(
-        FuyoKbn.KENGENFUYO,
-        FuyoKbn.MENTEFUYO
-    );
+            FuyoKbn.KENGENFUYO,
+            FuyoKbn.MENTEFUYO);
 
     /** 付与区分: すべて */
     private static final List<FuyoKbn> FUYO_KBN_ALL = List.of(
-        FuyoKbn.HATSUREI,
-        FuyoKbn.KENGENFUYO,
-        FuyoKbn.MENTEFUYO
-    );
+            FuyoKbn.HATSUREI,
+            FuyoKbn.KENGENFUYO,
+            FuyoKbn.MENTEFUYO);
 
     /** 主務兼務区分:「0:主務」「1:兼務1」「99:管理店番」 */
     private static final List<ShumuKenmuKbn> SHUMU_OR_KENMUT_OR_KANRI_TENBAN = List.of(
-        ShumuKenmuKbn.SHUMU,
-        ShumuKenmuKbn.KENMU1,
-        ShumuKenmuKbn.KANRI_TENBAN
-    );
+            ShumuKenmuKbn.SHUMU,
+            ShumuKenmuKbn.KENMU1,
+            ShumuKenmuKbn.KANRI_TENBAN);
 
     /** 主務兼務区分:「0:主務」「99:管理店番」 */
     private static final List<ShumuKenmuKbn> SHUMU_OR_KANRI_TENBAN = List.of(
-        ShumuKenmuKbn.SHUMU,
-        ShumuKenmuKbn.KANRI_TENBAN
-    );
+            ShumuKenmuKbn.SHUMU,
+            ShumuKenmuKbn.KANRI_TENBAN);
 
     /** 主務兼務区分:「0:主務」「1:兼務1」 */
     private static final List<ShumuKenmuKbn> SHUMU_OR_KENMU1 = List.of(
-        ShumuKenmuKbn.SHUMU,
-        ShumuKenmuKbn.KENMU1
-    );
+            ShumuKenmuKbn.SHUMU,
+            ShumuKenmuKbn.KENMU1);
 
     /** 主務兼務区分:「0:主務」 */
     private static final List<ShumuKenmuKbn> SHUMU = List.of(
-        ShumuKenmuKbn.SHUMU
-    );
+            ShumuKenmuKbn.SHUMU);
 
     /** 労務管理権限のリスト */
     private static final List<String> RK_ALL_AUTHORITY = Arrays.asList(
-        AuthorizeGroup.getAuthStrings(
-            AuthorizeGroup.RK_EMPLOYEE,
-            AuthorizeGroup.RK_BOSS,
-            AuthorizeGroup.RK_AUTHORIZER,
-            AuthorizeGroup.RK_HR_ALL,
-            AuthorizeGroup.RK_KAIGAI
-        )
-    );
+            AuthorizeGroup.getAuthStrings(
+                    AuthorizeGroup.RK_EMPLOYEE,
+                    AuthorizeGroup.RK_BOSS,
+                    AuthorizeGroup.RK_AUTHORIZER,
+                    AuthorizeGroup.RK_HR_ALL,
+                    AuthorizeGroup.RK_KAIGAI));
 
     /** 汎用権限:従業員、従業員(海外) */
     private static final List<String> RK_EMPLOYEE_ROLE = List.of(
-        Authorize.RESP_MUBK_RK_EMPLOYEE.getCode(),
-        Authorize.RESP_MUBK_RK_EMPLOYEE_KAIGAI.getCode()
-    );
+            Authorize.RESP_MUBK_RK_EMPLOYEE.getCode(),
+            Authorize.RESP_MUBK_RK_EMPLOYEE_KAIGAI.getCode());
 
     /** 権限委譲表示対象:1(承認者委譲表示対象) */
     private static final String HYOJITAISHO_SHONINSHA = "1";
@@ -160,7 +150,6 @@ public class Auth2ServiceImpl implements Auth2Service {
 
     /** DB最大日付 */
     private static final LocalDate DATE_MAX = LocalDate.of(9999, 12, 31);
-
 
     /**
      * 更新上司承認権限のメソッド
@@ -497,69 +486,56 @@ if (wkHakudatsuTaishoFlg) {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-/**
- * 労務管理上司権限付与判定処理
- *
- * @param shikakuCd      資格コード
- * @param yakushokuCd    役職コード
- * @return 判定結果
- */
-private boolean judgeJoshiFuyoTaisho(String shikakuCd, String yakushokuCd) {
-    if (Objects.isNull(shikakuCd)) {
-        return false;
-    }
-
-    try {
-        int shikakuNum = Integer.valueOf(shikakuCd);
-        int yakushokuNum = Integer.valueOf(yakushokuCd);
-
-        if ((shikakuNum == 15 && yakushokuNum >= 330) || shikakuNum >= 19) {
-            return true;
+    /**
+     * 労務管理上司権限付与判定処理
+     *
+     * @param shikakuCd   資格コード
+     * @param yakushokuCd 役職コード
+     * @return 判定結果
+     */
+    private boolean judgeJoshiFuyoTaisho(String shikakuCd, String yakushokuCd) {
+        if (Objects.isNull(shikakuCd)) {
+            return false;
         }
-    } catch (NumberFormatException e) {
-        // 資格コード、役職コードは数値として比較を行う為数値以外が来た場合、判定結果はfalseとする。
+
+        try {
+            int shikakuNum = Integer.valueOf(shikakuCd);
+            int yakushokuNum = Integer.valueOf(yakushokuCd);
+
+            if ((shikakuNum == 15 && yakushokuNum >= 330) || shikakuNum >= 19) {
+                return true;
+            }
+        } catch (NumberFormatException e) {
+            // 資格コード、役職コードは数値として比較を行う為数値以外が来た場合、判定結果はfalseとする。
+            return false;
+        }
+
         return false;
     }
 
-    return false;
-}
+    /**
+     * 労務管理承認者権限付与判定処理
+     *
+     * @param yakushokuCd 役職コード
+     * @param butenCd     部店コード
+     * @return 判定結果
+     */
+    private boolean judgeShoninshaFuyoTaisho(String yakushokuCd, String butenCd) {
+        List<String> HonbuFuyoTaishoYakushokuCd = List.of(
+                "010", "020", "030", "032", "035", "037", "040",
+                "050", "060", "083", "100", "204");
+        List<String> HonbuIgaiFuyoTaishoYakushokuCd = List.of(
+                "010", "020", "030", "032", "035", "037", "040",
+                "050", "060", "083");
 
-/**
- * 労務管理承認者権限付与判定処理
- *
- * @param yakushokuCd 役職コード
- * @param butenCd 部店コード
- * @return 判定結果
- */
-private boolean judgeShoninshaFuyoTaisho(String yakushokuCd, String butenCd) {
-    List<String> HonbuFuyoTaishoYakushokuCd = List.of(
-        "010", "020", "030", "032", "035", "037", "040", 
-        "050", "060", "083", "100", "204"
-    );
-    List<String> HonbuIgaiFuyoTaishoYakushokuCd = List.of(
-        "010", "020", "030", "032", "035", "037", "040", 
-        "050", "060", "083"
-    );
-
-    if ((butenCd.startsWith("6") && butenCd.length() == 4) ||
-        (butenCd.startsWith("71") && butenCd.length() == 4) ||
-        (butenCd.startsWith("72") && butenCd.length() == 4)) {
-        return HonbuFuyoTaishoYakushokuCd.contains(yakushokuCd);
-    } else {
-        return HonbuIgaiFuyoTaishoYakushokuCd.contains(yakushokuCd);
-    }
-}private boolean j··udgeShoninshaFuyoTaisho(String yakushokuCd, String butenCd) {
+        if ((butenCd.startsWith("6") && butenCd.length() == 4) ||
+                (butenCd.startsWith("71") && butenCd.length() == 4) ||
+                (butenCd.startsWith("72") && butenCd.length() == 4)) {
+            return HonbuFuyoTaishoYakushokuCd.contains(yakushokuCd);
+        } else {
+            return HonbuIgaiFuyoTaishoYakushokuCd.contains(yakushokuCd);
+        }
+    }private boolean j··udgeShoninshaFuyoTaisho(String yakushokuCd, String butenCd) {
     List<String> HonbuFuyoTaishoYakushokuCd = List.of(
         "010", "020", "030", "032", "035", "037", "040", 
         "050", "060", "083", "100", "204"
@@ -580,11 +556,269 @@ private boolean judgeShoninshaFuyoTaisho(String yakushokuCd, String butenCd) {
 
 // 对这个函数进行修改。如果butenCd是6xxx或71xx或72xx的情况下，判断的列表是HonbuFuyoTaishoYakushokuCd，如果butenCd是0xxx或1xxx或2xxx的情况下，判断的列表是HonbuIgaiFuyoTaishoYakushokuCd
 
+// List<String> fuyoTaishogaiYakushokuCd = List.of(
+// "011", "013", "038", "041", "100", "110", "111",
+// "200", "201", "202", "203", "204", "205", "210",
+// "211", "220", "221", "230", "231", "235", "236",
+// "240", "241", "250", "251"
+// );
 
 
-    // List<String> fuyoTaishogaiYakushokuCd = List.of(
-    //     "011", "013", "038", "041", "100", "110", "111", 
-    //     "200", "201", "202", "203", "204", "205", "210", 
-    //     "211", "220", "221", "230", "231", "235", "236", 
-    //     "240", "241", "250", "251"
-    // );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 有給付与
+ *
+ * @param batchMode バッチモード
+ * @param kaishaCd 会社コード
+ * @param shoriDate 処理日付
+ * @param logger ロガー
+ * @return 処理カウンター
+ */
+@Transactional(readOnly = true) // 独自にコミットを実施
+@Override
+public RkCounter yukyuFuyo(BatchMode batchMode, KaishaCd kaishaCd, LocalDate shoriDate, Logger logger) {
+    Integer nendo = RkDateUtils.getNendo(shoriDate);
+    LocalDate kijunbi = BatchMode.NICHIJI.equals(batchMode) ? shoriDate : RkDateUtils.getFirstDateOfNendo(nendo);
+
+    // 以降は基準日 (≒処理日付)で処理を行う
+    List<UserJoho> fuyoTaishoList = ksYukyuFuyoRepository.getFuyoTaishoUser(batchMode, kaishaCd, kijunbi);
+    entityManager.clear();
+
+    // TODO: ↓テスト用ユーザ指定
+    List<Long> LIMITED_USER_ID_LIST = List.of(
+        52321L, 52322L, 52323L, 52324L, 52325L, 
+        52326L, 52327L, 52328L, 52329L, 52330L, 
+        52331L, 52332L, 52333L, 52334L, 52335L, 
+        52336L, 52337L, 28901L, 36383L, 52340L, 52341L
+    );
+    Predicate<UserJoho> testUser = e -> LIMITED_USER_ID_LIST.contains(e.getUserId());
+    fuyoTaishoList = fuyoTaishoList.stream()
+        .filter(testUser)
+        .collect(Collectors.toList());
+    // TODO: ↑テスト用ユーザ指定
+
+    RkCounter counter = new RkCounter(
+        CNT_SHORI, CNT_MODIFY_NORMAL, CNT_MODIFY_WARN, 
+        CNT_FAILED, CNT_WITHOUT_MODIFY, CNT_WITHOUT_FUYO
+    );
+    counter.set(CNT_SHORI, fuyoTaishoList.size());
+
+    List<UserJoho> jugyoinList = new ArrayList<>();
+    List<UserJoho> keiyakuShainList = new ArrayList<>();
+
+    for (UserJoho fuyoTaisho : fuyoTaishoList) {
+        if (EXCLUDE_JUGYOIN_NO.contains(fuyoTaisho.getJugyoinNo())) {
+            counter.add(CNT_SHORI, -1);
+            continue;
+        }
+
+        if (RkUserUtils.isKeiyakuShain(fuyoTaisho)) {
+            keiyakuShainList.add(fuyoTaisho);
+        } else {
+            jugyoinList.add(fuyoTaisho);
+        }
+    }
+
+    // 独自の entityManager を使用して、更新に失敗しても処理を続行
+    EntityManager entityManagerForModify = entityManagerFactory.createEntityManager();
+    try {
+        ikatsuTaishogaiKoshin(entityManagerForModify, nendo);
+        
+        for (UserJoho jugyoin : jugyoinList) {
+            jugyoinKoshin(entityManagerForModify, jugyoin, nendo, kijunbi, counter, logger);
+        }
+        
+        for (UserJoho keiyakuShain : keiyakuShainList) {
+            keiyakuShainKoshin(entityManagerForModify, keiyakuShain, nendo, kijunbi, counter, logger);
+        }
+    } finally {
+        entityManagerForModify.close();
+    }
+
+    return counter;
+}
+
+
+
+/**
+ * 休暇付与保留対象対象外一括更新
+ *
+ * @param entityManagerForModify エンティティマネージャ
+ * @param nendo 年度
+ */
+@Transactional(readOnly = true) // 独自にコミットを実施
+private void ikatsuTaishogaiKoshin(EntityManager entityManagerForModify, Integer nendo) {
+    EntityTransaction transaction = null;
+
+    try {
+        transaction = entityManagerForModify.getTransaction();
+        transaction.begin();
+
+        // 去年度以前の休暇付与状態の"付与未済"を全て"対象外"へ更新
+        List<KsKyukaFuyoHoryuTaisho> ksKyukaFuyoHoryuTaishoList = 
+            ksKyukaFuyoHoryuTaishoService.setKsKyukaFuyoHoryuTaishoIkatsuTaishogai(
+                entityManagerForModify, 
+                nendo
+            );
+
+        updateTaishogai(entityManagerForModify, ksKyukaFuyoHoryuTaishoList);
+
+        transaction.commit();
+
+    } catch (Exception e) {
+        if (Objects.nonNull(transaction)) {
+            transaction.rollback();
+        }
+        // 本メソッドの Exception は処理を中断
+        throw new RuntimeException(e);
+    } finally {
+        entityManagerForModify.clear();
+        entityManager.clear();
+    }
+}
+
+
+/**
+ * 年度取得
+ *
+ * @param source 対象日
+ * @return 年度
+ */
+public static Integer getNendo(LocalDate source) {
+    return Integer.valueOf(source.minusMonths(4 - 1).getYear());
+}
+
+
+public LocalDate minusMonths(long monthsToSubtract) {
+    return (monthsToSubtract == Long.MIN_VALUE) 
+        ? plusMonths(Long.MAX_VALUE).plusMonths(1) 
+        : plusMonths(-monthsToSubtract);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/**
+ * 従業員(非契約社員)更新
+ *
+ * @param entityManagerForModify エンティティマネージャ
+ * @param nendo 年度
+ * @param user ユーザ
+ * @param kijunbi 基準日
+ * @param counter 処理カウンタ
+ * @param logger ロガー
+ */
+@Transactional(readOnly = true) // 独自にコミットを実施
+private void jugyoinKoshin(
+    EntityManager entityManagerForModify, 
+    UserJoho user, 
+    Integer nendo, 
+    LocalDate kijunbi,
+    RkCounter counter, 
+    Logger logger
+) {
+    EntityTransaction transaction = null;
+
+    try {
+        KojinKyukaJohoMstDto kojinKyukaJohoMstDto = kyukaNissuCalcService.createJugyoinKojinKyukaJohoMstDto(
+            user, nendo, kijunbi
+        );
+
+        // 警告判定
+        checkWarn(kojinKyukaJohoMstDto, user, nendo, logger);
+
+        transaction = entityManagerForModify.getTransaction();
+        transaction.begin();
+
+        // 既に個人休暇情報マスタが存在するなら初期化する
+        kyukaNissuCalcService.initKojinKyukaMst(
+            entityManagerForModify, 
+            user.getKaishaCd(), 
+            user.getUserId(),
+            nendo
+        );
+
+        // Dtoにセットした値をDBに反映する
+        kyukaNissuCalcService.updateKojinKyukaMst(
+            entityManagerForModify, 
+            user.getKaishaCd(), 
+            user.getUserId(),
+            nendo, 
+            kojinKyukaJohoMstDto
+        );
+
+        // 個人連続休暇情報マスタにレコードが無ければ作成する
+        insertKojinRenzokuKyukaJoho(
+            entityManagerForModify, 
+            user, 
+            nendo, 
+            UserType.JUGYOIN
+        );
+
+        // 退職者の場合"付与未済"を全て"対象外"へ更新
+        List<KsKyukaFuyoHoryuTaisho> ksKyukaFuyoHoryuTaishoList = 
+            ksKyukaFuyoHoryuTaishoService.getKsKyukaFuyoHoryuTaisho(
+                user.getUserId(),
+                KsKyukaFuyoJotai.FUYO_MIZAI
+            );
+        updateTaishogai(entityManagerForModify, ksKyukaFuyoHoryuTaishoList);
+
+        transaction.commit();
+
+        counter.count(kojinKyukaJohoMstDto.hasWarn() ? CNT_MODIFY_WARN : CNT_MODIFY_NORMAL);
+        if (kojinKyukaJohoMstDto.isWithoutFuyo()) {
+            counter.count(CNT_WITHOUT_FUYO);
+        }
+    } catch (Exception e) {
+        if (Objects.nonNull(transaction)) {
+            transaction.rollback();
+        }
+        String message = exceptionMessage(e);
+        logger.warn(MessageSourceUtils.getMessage(
+            KsLogMessageId.KS10W003,
+            String.valueOf(Objects.nonNull(user) ? user.getUserId() : "null"),
+            message
+        ));
+        logger.error(message, e);
+        logger.error("##### STACK TRACE #####");
+        counter.count(CNT_FAILED);
+    } finally {
+        entityManagerForModify.clear();
+        entityManager.clear();
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+

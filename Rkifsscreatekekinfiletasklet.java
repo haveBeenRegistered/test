@@ -52,174 +52,170 @@ public class RkIfssCreatekekinFileTasklet implements Tasklet {
         return RepeatStatus.FINISHED;
     }
 
-    
-private List<RkIfsskekinDto> getKekinSosinTaisho(String kaishaId) {
-    List<Object[]> resultKkss = rkIfsskekinRepository.kekinNativeQuery(kaishaId, KuniCd.DEFAULT.getCode());
-    List<Object[]> resultSs = rkIfsskekinRepository.sankyulkukyuNativeQuery(kaishaId);
+    private List<RkIfsskekinDto> getKekinSosinTaisho(String kaishaId) {
+        List<Object[]> resultKkss = rkIfsskekinRepository.kekinNativeQuery(kaishaId, KuniCd.DEFAULT.getCode());
+        List<Object[]> resultSs = rkIfsskekinRepository.sankyulkukyuNativeQuery(kaishaId);
 
-    List<RkIfsskekinDto> soshinData = new ArrayList<>();
+        List<RkIfsskekinDto> soshinData = new ArrayList<>();
 
-    soshinData.addAll(setRkIfssKekinFile(resultKkss));
-    soshinData.addAll(setRkIfsskekinFile(resultSs));
+        soshinData.addAll(setRkIfssKekinFile(resultKkss));
+        soshinData.addAll(setRkIfsskekinFile(resultSs));
 
-    return soshinData;
-}
+        return soshinData;
+    }
 
+    /**
+     * 欠勤情報ファイルの作成
+     * 
+     * @param result レコード
+     * @return 欠勤情報ファイル ([@link RkIfsskekinDto]) リスト
+     */
+    private List<RkIfsskekinDto> setRkIfsskekinFile(List<Object[]> result) {
+        List<RkIfsskekinDto> sosinData = new ArrayList<>();
 
-/**
- * 欠勤情報ファイルの作成
- * 
- * @param result レコード
- * @return 欠勤情報ファイル ([@link RkIfsskekinDto]) リスト
- */
-private List<RkIfsskekinDto> setRkIfsskekinFile(List<Object[]> result) {
-    List<RkIfsskekinDto> sosinData = new ArrayList<>();
+        result.stream().forEach(e -> {
+            RkIfsskekinDto record = new RkIfsskekinDto();
 
-    result.stream().forEach(e -> {
-        RkIfsskekinDto record = new RkIfsskekinDto();
+            record.setCtrlInfo(String.class.cast(e[0]));
+            record.setKaishaCd(String.class.cast(e[1]));
+            record.setJugyoinNo(String.class.cast(e[2]));
+            record.setSequenceNo(String.class.cast(e[3]));
+            record.setKanriJokyo(String.class.cast(e[4]));
+            record.setKekinKaishibi(String.class.cast(e[5]));
+            record.setFirstEigyobiFlg(String.class.cast(e[6]));
+            record.setKekinShuryobi(String.class.cast(e[7]));
+            record.setLastEigyobiFlg(String.class.cast(e[8]));
+            record.setKekinJiyu(String.class.cast(e[9]));
+            if (Objects.nonNull(e[10])) {
+                record.setByomei(String.class.cast(e[10]).replaceAll("\\\\r\\\\n|\\\\r|\\\\n", ""));
+            }
+            record.setKaigokazokuShimei(String.class.cast(e[11]));
+            record.setKaigokazokuTsuzukigara(String.class.cast(e[12]));
+            record.setShusanbi(String.class.cast(e[13]));
+            record.setShusanYoteibi(String.class.cast(e[14]));
+            record.setSanzenTokukyukaishibi(String.class.cast(e[15]));
+            record.setSanzenTokukyuShuryobi(String.class.cast(e[16]));
+            record.setSanzenkyumukaishibi(String.class.cast(e[17]));
+            record.setSanzenkyumuShuryobi(String.class.cast(e[18]));
+            record.setSangokyumukaishibi(String.class.cast(e[19]));
+            record.setSangokyumuShuryobi(String.class.cast(e[20]));
+            record.setIkukyukaishibi(String.class.cast(e[21]));
+            record.setIkukyuShuryobi(String.class.cast(e[22]));
+            record.setToshoUketsukebi(String.class.cast(e[23]));
+            record.setTataiNinshinkbn(String.class.cast(e[24]));
+            record.setIkukyukazokuShimei(String.class.cast(e[25]));
+            record.setIkukyukazokuTsuzukigara(String.class.cast(e[26]));
+            record.setKkssShinseiJohoId(String.class.cast(e[27]));
+            record.setSsShinseiJohoId(String.class.cast(e[28]));
+            record.setSoshingoShorikbn(String.class.cast(e[29]));
 
-        record.setCtrlInfo(String.class.cast(e[0]));
-        record.setKaishaCd(String.class.cast(e[1]));
-        record.setJugyoinNo(String.class.cast(e[2]));
-        record.setSequenceNo(String.class.cast(e[3]));
-        record.setKanriJokyo(String.class.cast(e[4]));
-        record.setKekinKaishibi(String.class.cast(e[5]));
-        record.setFirstEigyobiFlg(String.class.cast(e[6]));
-        record.setKekinShuryobi(String.class.cast(e[7]));
-        record.setLastEigyobiFlg(String.class.cast(e[8]));
-        record.setKekinJiyu(String.class.cast(e[9]));
-        if (Objects.nonNull(e[10])) {
-            record.setByomei(String.class.cast(e[10]).replaceAll("\\\\r\\\\n|\\\\r|\\\\n", ""));
-        }
-        record.setKaigokazokuShimei(String.class.cast(e[11]));
-        record.setKaigokazokuTsuzukigara(String.class.cast(e[12]));
-        record.setShusanbi(String.class.cast(e[13]));
-        record.setShusanYoteibi(String.class.cast(e[14]));
-        record.setSanzenTokukyukaishibi(String.class.cast(e[15]));
-        record.setSanzenTokukyuShuryobi(String.class.cast(e[16]));
-        record.setSanzenkyumukaishibi(String.class.cast(e[17]));
-        record.setSanzenkyumuShuryobi(String.class.cast(e[18]));
-        record.setSangokyumukaishibi(String.class.cast(e[19]));
-        record.setSangokyumuShuryobi(String.class.cast(e[20]));
-        record.setIkukyukaishibi(String.class.cast(e[21]));
-        record.setIkukyuShuryobi(String.class.cast(e[22]));
-        record.setToshoUketsukebi(String.class.cast(e[23]));
-        record.setTataiNinshinkbn(String.class.cast(e[24]));
-        record.setIkukyukazokuShimei(String.class.cast(e[25]));
-        record.setIkukyukazokuTsuzukigara(String.class.cast(e[26]));
-        record.setKkssShinseiJohoId(String.class.cast(e[27]));
-        record.setSsShinseiJohoId(String.class.cast(e[28]));
-        record.setSoshingoShorikbn(String.class.cast(e[29]));
+            sosinData.add(record);
+        });
 
-        sosinData.add(record);
-    });
+        return sosinData;
+    }
 
-    return sosinData;
-}
+    /**
+     * 送信用テーブルに登録する
+     *
+     * @param soshinData 送信データ
+     */
+    private void insertRkIfsskekin(List<RkIfsskekinDto> soshinData) {
+        soshinData.stream().forEach(e -> {
+            // キー項目が重複するレコードが既に存在するなら、物理削除する
+            RkIfsskekin henkomae = rkIfsskekinRepository.getByCtrlInfoAndKaishaCdAndJugyoinNoAndSequenceNoAndKekinJiyu(
+                    e.getCtrlInfo(), e.getKaishaCd(), e.getJugyoinNo(), e.getSequenceNo(), e.getKekinJiyu());
 
-/**
- * 送信用テーブルに登録する
- *
- * @param soshinData 送信データ
- */
-private void insertRkIfsskekin(List<RkIfsskekinDto> soshinData) {
-    soshinData.stream().forEach(e -> {
-        // キー項目が重複するレコードが既に存在するなら、物理削除する
-        RkIfsskekin henkomae = rkIfsskekinRepository.getByCtrlInfoAndKaishaCdAndJugyoinNoAndSequenceNoAndKekinJiyu(
-            e.getCtrlInfo(), e.getKaishaCd(), e.getJugyoinNo(), e.getSequenceNo(), e.getKekinJiyu()
-        );
+            if (!ObjectUtils.isEmpty(henkomae)) {
+                LockUtils.optimisticForceIncrement(henkomae);
+                rkIfsskekinRepository.delete(henkomae);
+                rkIfsskekinRepository.flush();
+            }
 
-        if (!ObjectUtils.isEmpty(henkomae)) {
-            LockUtils.optimisticForceIncrement(henkomae);
-            rkIfsskekinRepository.delete(henkomae);
-            rkIfsskekinRepository.flush();
-        }
+            RkIfsskekin rkIfsskekin = new RkIfsskekin();
+            rkIfsskekin.setCtrlInfo(e.getCtrlInfo());
+            rkIfsskekin.setKaishaCd(e.getKaishaCd());
+            rkIfsskekin.setJugyoinNo(e.getJugyoinNo());
+            rkIfsskekin.setSequenceNo(e.getSequenceNo());
+            rkIfsskekin.setKanriJokyo(e.getKanriJokyo());
+            rkIfsskekin.setKekinKaishibi(e.getKekinKaishibi());
+            rkIfsskekin.setFirstEigyobiFlg(e.getFirstEigyobiFlg());
+            rkIfsskekin.setKekinShuryobi(e.getKekinShuryobi());
+            rkIfsskekin.setLastEigyobiFlg(e.getLastEigyobiFlg());
+            rkIfsskekin.setKekinJiyu(e.getKekinJiyu());
+            rkIfsskekin.setByomei(e.getByomei());
+            rkIfsskekin.setKaigokazokuShimei(e.getKaigokazokuShimei());
+            rkIfsskekin.setKaigokazokuTsuzukigara(e.getKaigokazokuTsuzukigara());
+            rkIfsskekin.setShusanbi(e.getShusanbi());
+            rkIfsskekin.setShusanYoteibi(e.getShusanYoteibi());
+            rkIfsskekin.setSanzenTokukyukaishibi(e.getSanzenTokukyukaishibi());
+            rkIfsskekin.setSanzenTokukyuShuryobi(e.getSanzenTokukyuShuryobi());
+            rkIfsskekin.setSanzenkyumukaishibi(e.getSanzenkyumukaishibi());
+            rkIfsskekin.setSanzenkyumuShuryobi(e.getSanzenkyumuShuryobi());
+            rkIfsskekin.setSangokyumukaishibi(e.getSangokyumukaishibi());
+            rkIfsskekin.setSangokyumuShuryobi(e.getSangokyumuShuryobi());
+            rkIfsskekin.setIkukyukaishibi(e.getIkukyukaishibi());
+            rkIfsskekin.setIkukyuShuryobi(e.getIkukyuShuryobi());
+            rkIfsskekin.setToshoUketsukebi(e.getToshoUketsukebi());
+            rkIfsskekin.setTataiNinshinkbn(e.getTataiNinshinkbn());
+            rkIfsskekin.setIkukyukazokuShimei(e.getIkukyukazokuShimei());
+            rkIfsskekin.setIkukyukazokuTsuzukigara(e.getIkukyukazokuTsuzukigara());
+            rkIfsskekin.setSoshinZumiKon(SoshinZumiKon.MISHORI);
 
-        RkIfsskekin rkIfsskekin = new RkIfsskekin();
-        rkIfsskekin.setCtrlInfo(e.getCtrlInfo());
-        rkIfsskekin.setKaishaCd(e.getKaishaCd());
-        rkIfsskekin.setJugyoinNo(e.getJugyoinNo());
-        rkIfsskekin.setSequenceNo(e.getSequenceNo());
-        rkIfsskekin.setKanriJokyo(e.getKanriJokyo());
-        rkIfsskekin.setKekinKaishibi(e.getKekinKaishibi());
-        rkIfsskekin.setFirstEigyobiFlg(e.getFirstEigyobiFlg());
-        rkIfsskekin.setKekinShuryobi(e.getKekinShuryobi());
-        rkIfsskekin.setLastEigyobiFlg(e.getLastEigyobiFlg());
-        rkIfsskekin.setKekinJiyu(e.getKekinJiyu());
-        rkIfsskekin.setByomei(e.getByomei());
-        rkIfsskekin.setKaigokazokuShimei(e.getKaigokazokuShimei());
-        rkIfsskekin.setKaigokazokuTsuzukigara(e.getKaigokazokuTsuzukigara());
-        rkIfsskekin.setShusanbi(e.getShusanbi());
-        rkIfsskekin.setShusanYoteibi(e.getShusanYoteibi());
-        rkIfsskekin.setSanzenTokukyukaishibi(e.getSanzenTokukyukaishibi());
-        rkIfsskekin.setSanzenTokukyuShuryobi(e.getSanzenTokukyuShuryobi());
-        rkIfsskekin.setSanzenkyumukaishibi(e.getSanzenkyumukaishibi());
-        rkIfsskekin.setSanzenkyumuShuryobi(e.getSanzenkyumuShuryobi());
-        rkIfsskekin.setSangokyumukaishibi(e.getSangokyumukaishibi());
-        rkIfsskekin.setSangokyumuShuryobi(e.getSangokyumuShuryobi());
-        rkIfsskekin.setIkukyukaishibi(e.getIkukyukaishibi());
-        rkIfsskekin.setIkukyuShuryobi(e.getIkukyuShuryobi());
-        rkIfsskekin.setToshoUketsukebi(e.getToshoUketsukebi());
-        rkIfsskekin.setTataiNinshinkbn(e.getTataiNinshinkbn());
-        rkIfsskekin.setIkukyukazokuShimei(e.getIkukyukazokuShimei());
-        rkIfsskekin.setIkukyukazokuTsuzukigara(e.getIkukyukazokuTsuzukigara());
-        rkIfsskekin.setSoshinZumiKon(SoshinZumiKon.MISHORI);
+            LockUtils.optimisticForceIncrement(rkIfsskekin);
+            rkIfsskekinRepository.save(rkIfsskekin);
+        });
+    }
 
-        LockUtils.optimisticForceIncrement(rkIfsskekin);
-        rkIfsskekinRepository.save(rkIfsskekin);
-    });
-}
+    /**
+     * 送信用CSV作成後、労務管理、欠勤情報テーブルの送信処理済区分を1:処理済に更新する
+     *
+     * @param sosinData 送信データ
+     */
+    private void updateKkssShinsei(List<RkIfsskekinDto> sosinData) {
+        sosinData.stream().forEach(e -> {
+            IfSoshinZumiKbn ifSoshinZumiKbn = null;
 
-/**
- * 送信用CSV作成後、労務管理、欠勤情報テーブルの送信処理済区分を1:処理済に更新する
- *
- * @param sosinData 送信データ
- */
-private void updateKkssShinsei(List<RkIfsskekinDto> sosinData) {
-    sosinData.stream().forEach(e -> {
-        IfSoshinZumiKbn ifSoshinZumiKbn = null;
+            if (e.getSoshingoShoriKbn().equals(IfSoshinZumiKbn.SHORIZUMI.getCode())) {
+                ifSoshinZumiKbn = IfSoshinZumiKbn.SHORIZUMI;
+            } else {
+                ifSoshinZumiKbn = IfSoshinZumiKbn.TAISHOGAI;
+            }
 
-        if (e.getSoshingoShoriKbn().equals(IfSoshinZumiKbn.SHORIZUMI.getCode())) {
-            ifSoshinZumiKbn = IfSoshinZumiKbn.SHORIZUMI;
-        } else {
-            ifSoshinZumiKbn = IfSoshinZumiKbn.TAISHOGAI;
-        }
+            if (Objects.nonNull(e.getKkssShinseiJohoId())) {
+                KkssShinseiJoho kkssShinseiJoho = rkKkssShinseiJohoRepository
+                        .getById(Long.valueOf(e.getKkssShinseiJohoId()));
+                kkssShinseiJoho.setIfSoshinZumiKbn(ifSoshinZumiKbn);
+                LockUtils.optimisticForceIncrement(kkssShinseiJoho);
+                rkKkssShinseiJohoRepository.save(kkssShinseiJoho);
+            }
 
-        if (Objects.nonNull(e.getKkssShinseiJohoId())) {
-            KkssShinseiJoho kkssShinseiJoho = rkKkssShinseiJohoRepository.getById(Long.valueOf(e.getKkssShinseiJohoId()));
-            kkssShinseiJoho.setIfSoshinZumiKbn(ifSoshinZumiKbn);
-            LockUtils.optimisticForceIncrement(kkssShinseiJoho);
-            rkKkssShinseiJohoRepository.save(kkssShinseiJoho);
-        }
-
-        if (Objects.nonNull(e.getSsShinseiJohoId())) {
-            SsShinseiJoho ssShinseiJoho = ssShinseiJohoRepository.getById(Long.valueOf(e.getSsShinseiJohoId()));
-            ssShinseiJoho.setIfSoshinZumiKbn(ifSoshinZumiKbn);
-            LockUtils.optimisticForceIncrement(ssShinseiJoho);
-            ssShinseiJohoRepository.save(ssShinseiJoho);
-        }
-    });
-}
-
+            if (Objects.nonNull(e.getSsShinseiJohoId())) {
+                SsShinseiJoho ssShinseiJoho = ssShinseiJohoRepository.getById(Long.valueOf(e.getSsShinseiJohoId()));
+                ssShinseiJoho.setIfSoshinZumiKbn(ifSoshinZumiKbn);
+                LockUtils.optimisticForceIncrement(ssShinseiJoho);
+                ssShinseiJohoRepository.save(ssShinseiJoho);
+            }
+        });
+    }
 
 }
 
+WITH saishin_ss_shinsei
 
-
-
-
-
-WITH saishin_ss_shinsei AS (
+AS (
     SELECT
         *
     FROM
         rk_ss_shinsei_joho_tbl ss
     WHERE
         ss.shinsei_status = '2'
-        AND COALESCE(ss.if_soshin_zumi_kbn, '0') = '0'
+
+AND COALESCE(ss.if_soshin_zumi_kbn, '0') = '0'
         AND ss.kaisha_cd = 100
         AND ss.delete_flg = false
 ),
+
 henko_mae AS (
     -- 変更前のレコードがIF送信済であれば削除のため取得する
     SELECT
@@ -230,8 +226,10 @@ henko_mae AS (
     WHERE
         saishin.user_id = henko_mae.user_id
         AND saishin.sequence_no = henko_mae.sequence_no
-        AND COALESCE(henko_mae.if_soshin_zumi_kbn, '0') = '1'
+
+AND COALESCE(henko_mae.if_soshin_zumi_kbn, '0') = '1'
 ),
+
 soshin_taisho_ss AS (
     -- 最新のデータと変更前のデータをUNION
     SELECT
@@ -247,7 +245,8 @@ soshin_taisho_ss AS (
     ON saishin.user_id = henko_mae.user_id
     AND saishin.sequence_no = henko_mae.sequence_no
     WHERE
-        NOT (henko_mae.ss_shinsei_joho_id IS NULL
+
+NOT (henko_mae.ss_shinsei_joho_id IS NULL
         AND saishin.ss_shinsei_kbn = '9')
     UNION
     SELECT
@@ -262,6 +261,7 @@ soshin_taisho_ss AS (
         AND saishin.sequence_no = henko_mae.sequence_no
         AND saishin.ss_shinsei_kbn != '9'
 ),
+
 kaigai AS (
     -- 海外勤務者を除外するため、期間中の渡航履歴があるレコードのIDを取得
     SELECT
@@ -278,6 +278,7 @@ kaigai AS (
         )
         AND toko.delete_flg = false
 ),
+
 kazoku_temp AS (
     SELECT
         soshin_ss.ss_shinsei_joho_id,
@@ -295,6 +296,7 @@ kazoku_temp AS (
     ORDER BY
         kazoku_mst.kazoku_joho_mst_id
 ),
+
 kazoku AS (
     SELECT
         kazoku_temp.ss_shinsei_joho_id,
@@ -311,7 +313,9 @@ SELECT
     bc_user.jugyoin_no,
     ss.sequence_no,
     CASE
-        WHEN ss.ss_shinsei_kbn IN ('3', '9') THEN '0'
+        WHEN
+
+ss.ss_shinsei_kbn IN ('3', '9') THEN '0'
         ELSE '1'
     END AS kanri_jokyo,
     ss.shusanbi,
@@ -324,7 +328,8 @@ SELECT
     ss.sanzen_kyumu_kaishibi,
     CASE
         WHEN ss.sanzen_kyumu_kaishibi IS NULL THEN NULL
-        ELSE COALESCE(ss.shusanbi, ss.shusan_yoteibi)
+
+ELSE COALESCE(ss.shusanbi, ss.shusan_yoteibi)
     END AS sanzen_kyumu_shuryobi,
     CASE
         WHEN ss.sango_kyumu_shuryo_yoteibi IS NULL
@@ -362,7 +367,8 @@ SELECT
     ss.ctrl_info AS ctrl_info,
     ss.kaisha_cd AS kaisha_cd,
     ss.jugyoin_no AS jugyoin_no,
-    CAST(ss.sequence_no AS character varying) AS sequence_no,
+
+CAST(ss.sequence_no AS character varying) AS sequence_no,
     ss.kanri_jokyo AS kanri_jokyo,
     NULL AS kekin_kaishibi,
     NULL AS first_eigyobi_fig,
@@ -396,8 +402,3 @@ ORDER BY
     ss.jugyoin_no,
     CAST(ss.sequence_no AS integer),
     ss.ctrl_info DESC;
-
-
-
-
-
