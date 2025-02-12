@@ -1,0 +1,9 @@
+List<RkTokubetsuKinmuMstDto> result = new ArrayList<>();
+   resultList.stream().forEach(e -> {
+       RkTokubetsuKinmuMstDto selectDto = new RkTokubetsuKinmuMstDto();
+       int i = 0;
+       selectDto.setShukinmuNissu(Integer.class.cast(e[i++]));
+       selectDto.setShoteRodoJikan(Float.class.cast(e[i++]));
+       selectDto.setTokubetsuKinmuCd(String.class.cast(e[i++]));
+       result.add(selectDto);
+   }); 
