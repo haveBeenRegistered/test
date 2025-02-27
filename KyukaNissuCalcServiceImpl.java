@@ -557,3 +557,23 @@ if (RkNumberUtils.isAscendingThan(yukyuMishokaNissu, 0f)) {
     // 返回true表示保存休假入账处理成功
     return true;
 }
+
+
+/**
+ * 获取上一次处理日期
+ * @param jobName 作业名称
+ * @return 上一次处理日期
+ * @throws RkBatchException 当前处理日期不大于上次处理日期时抛出异常
+ */
+private LocalDate getZenkaiShoribi(String jobName) {
+    // 获取上一次处理日期
+    LocalDate zenkaiShoribi = getZenkaiShoribi(jobName);
+
+    // 检查当前处理日期是否大于上次处理日期
+    // 如果当前处理日期小于或等于上次处理日期，则抛出异常
+    if (RkDateUtils.isAscendingEqual(shoribi, zenkaiShoribi)) {
+        throw new RkBatchException(RkKsBatchErrorCode.KS10E002); 
+    }
+
+    return zenkaiShoribi;
+}
