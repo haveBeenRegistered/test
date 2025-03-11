@@ -1,0 +1,42 @@
+drop procedure if exists test;
+
+delimiter $$
+create procedure test()
+begin
+    -- 変数 id を宣言、型は int(11)
+    declare id int(11);    
+    -- 変数 ordertime を宣言、型は datetime
+    declare ordertime datetime; 
+    -- 変数 total を宣言、型は int(11)
+    DECLARE total int(11);  
+    -- 変数 uid を宣言、型は int(11)
+    DECLARE uid int(11);
+    -- 変数 jieshu を宣言、初期値は 1
+    declare jieshu int default 1;
+    -- カーソル test を宣言、orders テーブルから全ての列を選択
+    declare test cursor for select * from orders;
+    -- データが見つからない場合のハンドラーを宣言、jieshu を 0 に設定
+    declare exit handler for not found set jieshu = 0;
+    
+    -- カーソルを開く
+    open test;
+    
+    -- 繰り返し処理を開始
+    repeat
+        -- カーソルからデータを取得し、変数に格納
+        fetch test into id, ordertime, total, uid;
+        -- test テーブルにデータを挿入
+        insert into test(test, total) values (id, total);
+        -- test テーブルの行数をカウントし、変数 @a に格納
+        SELECT COUNT(*) INTO @a FROM test;
+    -- jieshu が 0 になるまで繰り返す
+    until jieshu = 0
+    end repeat;
+    
+    -- カーソルを閉じる
+    close test; 
+end $$
+delimiter ;
+
+-- 変数 @a の値を選択
+select @a;

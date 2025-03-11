@@ -1,0 +1,36 @@
+# .tar ファイルをすべてリストアップして処理
+for dumpfile in $(ls *.tar)
+do
+    # ファイル名からスキーマ名を抽出
+    schema=${dumpfile%%_20*}
+    echo ${schema}
+    
+    # .tar ファイルを解凍
+    tar -xvf ${dumpfile}
+    
+    # 解凍された .sql.gz ファイルをリストアップして処理
+    for var in $(ls ${schema}*sql.gz)
+    do 
+        echo importing ${var}
+        # .sql.gz ファイルを解凍して MySQL にインポート
+        zcat ${var} | mysql -upgm_${schema} -ppgm${schema} ${schema} --default-character-set=utf8mb4
+        # インポートが成功した場合、ファイルを削除
+        if [ $? == 0 ]
+        then
+            rm -fv ${var}
+        fi
+    done
+    
+    # 再度 .sql.gz ファイルをリストアップして処理
+    for var in $(ls ${schema}*sql.gz)
+    do 
+        echo importing ${var}
+        # .sql.gz ファイルを解凍して MySQL にインポート
+        zcat ${var} | mysql -upgm_${schema} -ppgm${schema} ${schema} --default-character-set=utf8mb4
+        # インポートが成功した場合、ファイルを削除
+        if [ $? == 0 ]
+        then
+            rm -fv ${var}
+        fi
+    done
+done

@@ -869,3 +869,276 @@ public void processFormRequestX(OAPageContext pageContext, OAWebBean webBean) {
         BundledException.raiseRuntime(this, pageContext, e);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+SELECT /* KinmuJosiListVO */
+    NULL AS SENTAKU,
+    NULL AS SYOKAI,
+    flv.ATTRIBUTES AS SINSEI_SYUBETU_NAME,
+    iknj.KOIN_NO,
+    NVL(papf.ATTRIBUTE15, papf.PER_INFORMATION18) AS ATTRIBUTE15,
+    NVL(papf.ATTRIBUTE16, papf.PER_INFORMATION19) AS ATTRIBUTE16,
+    TO_CHAR(TO_NUMBER(TO_CHAR(ikni.KINMUBI)), 
+            TO_CHAR(TO_NUMBER(TO_CHAR(iknj.KINMUBI, 'DD')))) AS HIDUKE,
+    IHR_KINMU_GET_SYUGYO_KBN_NAME(iknj.SYUGYO_KBN) AS SYUGYO_KBN_NAME,
+    IHR_KINMU_GET_KINMU_PATTERN_RYAKUSYO(ikni.KINMU_PATTERN_CODE) AS KINMU_PATTERN_RYAKUSHO,
+    IHR_KINMU_GET_JIKOKU(
+        ikni.KIMMU_BGN_HH,
+        iknj.KIMMU_BGN_MI,
+        iknj.KINMU_END_HH,
+        iknj.KINMU_END_MI
+    ) AS KINMU_JKN,
+    IHR_KINMU.DISP_ON_VIEW AS KINMU_DISP,
+    NULL AS SPACE_1,
+    IHR_WF_KINMU.DISP_ON_VIEW(
+        ikni.HYOJI_KBN,
+        ikni.IKKATU_FLG,
+        ikni.KANRI_KBN,
+        ikni.SAIRYO_FLAG,
+        IHR_KINMU_COMMON_CONST.GET_CONST_CHAR2('C_KOMOKU_KBN_SAI_KK_HIHYOJI'),
+        ikni
+    ) AS HOTENAI,
+    HOTENAI_SYOTEGAI,
+    ikni.HYOJI_KBN,
+    ikni.IKKATU_FLG,
+    ikni.KANRI_KBN,
+    iknj.SAIRYO_FLAG
+
+    SELECT /* KinmuJosiListVO */ 
+    -- 基本信息栏位
+    NULL AS SENTAKU,
+    NULL AS SYOKAI,
+    flv.ATTRIBUTES AS SINSEI_SYUBETU_NAME,
+    iknj.KOIN_NO,
+    NVL(papf.ATTRIBUTE15, papf.PER_INFORMATION18) AS ATTRIBUTE15,
+    NVL(papf.ATTRIBUTE16, papf.PER_INFORMATION19) AS ATTRIBUTE16,
+    
+    -- 日付関連
+    TO_CHAR(
+        TO_NUMBER(TO_CHAR(ikni.KINMUBI)), 
+        TO_CHAR(TO_NUMBER(TO_CHAR(iknj.KINMUBI, 'DD')))
+    ) AS HIDUKE,
+    
+    -- 勤務情報
+    IHR_KINMU_GET_SYUGYO_KBN_NAME(iknj.SYUGYO_KBN) AS SYUGYO_KBN_NAME,
+    IHR_KINMU_GET_KINMU_PATTERN_RYAKUSYO(ikni.KINMU_PATTERN_CODE) AS KINMU_PATTERN_RYAKUSHO,
+    IHR_KINMU_GET_JIKOKU(
+        ikni.KIMMU_BGN_HH,
+        iknj.KIMMU_BGN_MI,
+        iknj.KINMU_END_HH,
+        iknj.KINMU_END_MI
+    ) AS KINMU_JKN,
+    
+    -- 表示制御
+    IHR_KINMU.DISP_ON_VIEW AS KINMU_DISP,
+    NULL AS SPACE_1,
+    
+    -- 法定外時間関連
+    IHR_WF_KINMU.DISP_ON_VIEW(
+        ikni.HYOJI_KBN,
+        ikni.IKKATU_FLG,
+        ikni.KANRI_KBN,
+        ikni.SAIRYO_FLAG,
+        IHR_KINMU_COMMON_CONST.GET_CONST_CHAR2('C_KOMOKU_KBN_SAI_KK_HIHYOJI'),
+        ikni
+    ) AS HOTENAI,
+    HOTENAI_SYOTEGAI,
+    
+    -- 表示制御フラグ
+    ikni.HYOJI_KBN,
+    ikni.IKKATU_FLG,
+    ikni.KANRI_KBN,
+    iknj.SAIRYO_FLAG,
+    
+    -- 集計関連
+    ikes.RUIKEI_3MONTHS AS RUIKEI_3MONTHS,
+    ikas.RUIKEI_YEAR AS RUIKEI_YEAR,
+    
+    -- 四半期・年間関連
+    NULL AS SHIHANKI_GENDO_ZAN,
+    NULL AS SHIHANKI_GENDO_ZAN_HYOJI_FLG,
+    NULL AS SHIHANKI_ENTYO,
+    NULL AS SHIHANKI_ENTYO_COUNT,
+    NULL AS NENKAN_GENDO_ZAN,
+    NULL AS NENKAN_GENDO_ZAN_HYOJI_FLG,
+    NULL AS NENKAN_ENTYO
+
+    SELECT 
+    -- 就業情報
+    iknj.HYOJI_KBN,
+    iknj.IKKATU_FLG,
+    iknj.KANRI_KBN,
+    iknj.SAIRYO_FLAG,
+
+    -- 共通定数取得
+    IHR_KINMU_COMMON_CONST.GET_CONST_CHAR2('C_KOMOKU_KBN_SAI_KK_HIHYOJI') AS CONST_VALUE,
+    
+    -- 法定外・休日・深夜関連
+    IHR_WF_KINMU.DISP_ON_VIEW_GOKEI_SINYA(
+        iknj.HYOJI_KBN,
+        iknj.HOTEGAI_GOKE
+    ) AS HOTEGAI_GOKE1,
+    
+    -- 累計情報
+    ikes.RUIKEI_3MONTHS AS RUIKEI_3MONTHS,
+    ikas.RUIKEI_YEAR AS RUIKEI_YEAR,
+    
+    -- 限度・延長情報
+    NULL AS SHIHANKI_GENDO_ZAN,
+    NULL AS SHIHANKI_GENDO_ZAN_HYOJI_FLG,
+    NULL AS SHIHANKI_ENTYO,
+    NULL AS SHIHANKI_ENTYO_COUNT,
+    NULL AS NENKAN_GENDO_ZAN,
+    NULL AS NENKAN_GENDO_ZAN_HYOJI_FLG,
+    NULL AS NENKAN_ENTYO,
+
+    -- 超過判定
+    CASE 
+        WHEN iknj.KINMUBI > TO_DATE(
+            IHR_KINMU_COMMON.GET_KINMU_ENV_VALUE('TEKIYO_KAISI_DATE'), 
+            'YYYYMMDD'
+        ) THEN
+            CASE
+                WHEN IHR_WF_KINMU.GET_HOTEGAI_HANTE12(
+                    iknj.PERSON_ID,
+                    iknj.KINMUBI
+                ) = '1' THEN '超過'
+                ELSE NULL
+            END
+        ELSE NULL 
+    END AS JYOGEN,
+    
+    -- その他表示項目
+    NULL AS SPACE_2,
+    IHR_WF_KINMU.DISP_ON_VIEW_GOKEI_SINYA(
+        iknj.HYOJI_KBN,
+        iknj.SINYA
+    ) AS SINYA,
+    flv.ATTRIBUTE2 AS STATUS_NAME
+
+    -- 时间相关字段计算
+SELECT 
+    -- 基本状态与标识
+    NULL AS JOSI_COMMENT,
+    iknj.PERSON_ID,
+    ikni.KINMU_SYONIN_JOTAI AS STATUS,
+    1 AS SINSEI_SYUBETU,
+    
+    -- 日期格式化
+    TO_CHAR(iknj.KINMUBI, 'DD') AS HIDUKE_SORT,
+    iknj.KINMUBI,
+    TO_CHAR(iknj.KINMUBI, 'YYYYMM') AS TAISYO_YM,
+    
+    -- 代理标志处理
+    CASE 
+        WHEN iknj.KOIN_NO = iknj.SINSEISYA_KOIN_NO THEN 'N'
+        ELSE 'Y'
+    END AS DAIRI_FLG,
+    
+    -- 申请人信息
+    iknj.SINSEISYA_KOIN_NO,
+    iknj.SINSEISYA_NAME,
+    
+    -- 明细相关信息
+    ikni.MEISAI_KBN,
+    ikni.KANRI_KBN,
+    NULL AS TOKUTEI_MARK,
+    ikni.TOKUBETU_KINMU_CODE,
+    iknj.SYUGYO_KBN,
+    
+    -- 状态序列信息
+    NULL AS SEQUENCE,
+    NULL AS JOKYO_STATUS,
+    NULL AS TESE_JOKYO_SEQ,
+    NULL AS bef_aft_seq,
+    NULL AS err_msg_code,
+    ikni.SAIRYO_FLAG AS SAIRYO_FLAG
+    -- 劳务时间计算部分
+SELECT
+    -- 劳务工时计算
+    CASE 
+        WHEN IHR_KINMU_COMMON.GET_JYUGYOSYA_KBN_NAME(
+            pptuf.PERSON_TYPE_ID, 
+            paaf.GRADE_ID
+        ) = 'D' THEN
+            CASE 
+                WHEN NVL(iknj.roudo_jikansu, 0) > 0 THEN 
+                    IHR_WF_KINMU.GET_JIKOKU(NVL(iknj.roudo_jikansu, 0))
+                ELSE NULL 
+            END
+    END AS roudo_jikansu,
+
+    -- 特殊工时计算
+    CASE 
+        WHEN paaf.GRADE_ID = IHR_KEIYAKU_COMMON.GET_GRADE_ID_KEIYAKU() THEN
+            CASE 
+                WHEN NVL(iknj.teller_jikansu, 0) > 0 THEN
+                    IHR_WF_KINMU.GET_JIKOKU(NVL(iknj.teller_jikansu, 0))
+                ELSE NULL
+            END
+    END AS teller_jikansu,
+
+    -- 通勤费计算
+    CASE 
+        WHEN paaf.GRADE_ID = IHR_KEIYAKU_COMMON.GET_GRADE_ID_KEIYAKU() THEN
+            CASE 
+                WHEN NVL(iknj.tukin_hi, 0) > 0 THEN
+                    TO_CHAR(NVL(iknj.tukin_hi, 0), '999.999')
+                ELSE NULL
+            END
+    END AS tukin_hi,
+
+    -- 备注说明
+    iknj.DESCRIPTION,
+
+    -- 登录时间计算
+    IHR_NETPC.GET_JIKOKU(
+        TO_NUMBER(TO_CHAR(ill.LOGON_DATE_TIME, 'HH24')),
+        TO_NUMBER(TO_CHAR(ill.LOGON_DATE_TIME, 'MI'))
+    ) AS LOGON_JKN,
+
+    -- 登出时间计算
+    CASE
+        WHEN TO_CHAR(ill.LOGOFF_DATE_TIME, 'YYYYMMDD') > ill.KIJUN_BI THEN NULL
+        ELSE IHR_NETPC.GET_JIKOKU(
+            TO_NUMBER(TO_CHAR(ill.LOGOFF_DATE_TIME, 'HH24')),
+            TO_NUMBER(TO_CHAR(ill.LOGOFF_DATE_TIME, 'MI'))
+        )
+    END AS LOGOFF_JKN,
+
+    -- 各类工时调整计算
+    IHR_WF_KINMU.GET_JIKOKU(ikni.TYUSYOKU_KOJO_JIKANSU) AS TYUSYOKU_KOJO_JIKANSU,
+    IHR_WF_KINMU.GET_JIKOKU(ikni.TUJO_KOJO_JIKANSU) AS TUJO_KOJO_JIKANSU,
+    IHR_WF_KINMU.GET_JIKOKU(ikni.SINYA_KOJO_JIKANSU) AS SINYA_KOJO_JIKANSU,
+    DECODE(iknj.TYUSYOKU_HOJO_FLG, '1', '0', NULL) AS tyusyoku_hojo,
+    
+    -- 工作比率
+    mufe.kinmu_wariai AS kinmu_wariai_input_flag
+FROM
+    IHR_KINMU_NITIJI_JOHO iknj
+    LEFT JOIN IHR_KINMU_NITIJI_INPUT ikni ON iknj.KINMUBI = ikni.KINMUBI
+    LEFT JOIN FND_LOOKUP_VALUES flv ON ikni.SINSEI_SYUBETU = flv.LOOKUP_CODE
+    LEFT JOIN PER_ALL_PEOPLE_F papf ON iknj.PERSON_ID = papf.PERSON_ID
+    LEFT JOIN IHR_KINMU_ENTYO_SYUKEIJKOHO ikes ON iknj.PERSON_ID = ikes.PERSON_ID
+    LEFT JOIN IHR_KINMU_KAIGAI_SYUKEIJKOHO ikas ON iknj.PERSON_ID = ikas.PERSON_ID
+WHERE
+    iknj.PERSON_ID = :1
+    AND iknj.KINMUBI BETWEEN :2 AND :3
+    AND flv.LOOKUP_TYPE(+) = 'IHR_KINMU_SINSEI_SYUBETU'
+    AND flv.LANGUAGE = USERENV('LANG')
+ORDER BY
+    iknj.KINMUBI DESC;
+
+
+
+
+    if(10mnFunc2.getConst("C_KEIYAKU_SYAIN_SYOKUSYU3").equalsIgnoreCase(recordRow.get Syokusyu3()))|
