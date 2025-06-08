@@ -1,0 +1,96 @@
+172.190.224.40
+open vpn项目
+azureuser
+
+sudo sed -i 's/^#*net.ipv4.ip_forward=.*/net.ipv4.ip_forward=1/' /etc/sysctl.conf
+sudo sysctl -p
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
+sudo iptables -A FORWARD -s 10.8.0.0/24 -j ACCEPT
+sudo iptables -A FORWARD -d 10.8.0.0/24 -j ACCEPT
+sudo apt install iptables-persistent -y
+sudo netfilter-persistent save
+sudo systemctl restart openvpn@server
+
+
+ca密码
+12345678
+route -p add 0.0.0.0 mask 0.0.0.0 192.168.3.1 metric 125 if 19
+route add 0.0.0.0 mask 0.0.0.0 192.168.3.1 metric 100
+route print
+https://whatismyip.com
+
+管理员运行
+cd C:\Users\81804\Desktop\aws
+vpn-route.bat vpn
+vpn-route.bat local
+sudo -i
+sudo nano /etc/openvpn/server.conf
+
+sudo systemctl restart openvpn@server
+sudo systemctl status openvpn@server
+确保 IP 转发已启用：
+sudo sysctl net.ipv4.ip_forward
+sudo netstat -tuln | grep 5353
+nslookup -port=53 google.com 127.0.0.1
+client
+dev tun
+proto udp
+remote 172.190.224.40 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+cipher AES-256-CBC
+auth SHA256
+verb 3
+
+项目启动
+cd e:\majiang\mahjong-helper
+go run .
+
+
+python api_server.py
+python run_akagi.py .
+
+majsoul plus.exe;chrome.exe
+
+'1z': 'E',  # 东风
+'2z': 'S',  # 南风
+'3z': 'W',  # 西风
+'4z': 'N',  # 北风
+'5z': 'P',  # 白板
+'6z': 'F',  # 发财
+'7z': 'C'   # 中
+
+壁危险度等于字牌
+on chance安度在无筋和有筋牌之间
+
+东风
+南风
+西风
+北风
+白板
+发财
+中
+
+'5mr',
+'1m',
+'2m',
+'3m',
+'4m',
+'5m',
+'6m',
+'7m',
+'8m',
+'9m',
+
+如果没有完全相同的牌，接下来检查可见牌中是否有只剩1张未出现的东风 南风 西风 北风 白板 发财 中在我的手牌中
+
+
+
+
+
+
+
+

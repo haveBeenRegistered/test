@@ -1,0 +1,143 @@
+su root -
+rootroot
+
+# 1. 更新所有软件包
+sudo yum update -y
+
+# 2. 安装 Docker
+sudo yum install docker -y
+
+# 3. 启动 Docker 并设置开机自启
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# 4. 安装 Nginx
+sudo yum install nginx -y
+
+# 5. 启动 Nginx 并设置开机自启
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+docker build -t nextapi-image .
+
+aws ecr create-repository --repository-name nextapi --region ap-northeast-1
+
+登录模板
+aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com
+
+region是ap-northeast-1，account-id是konnndenn
+repository-uri是403539290711.dkr.ecr.ap-northeast-1.amazonaws.com/nextapi
+
+登录指令
+aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin 403539290711.dkr.ecr.ap-northeast-1.amazonaws.com
+
+docker tag nextapi-image:latest 403539290711.dkr.ecr.ap-northeast-1.amazonaws.com/nextapi:latest
+
+docker push 403539290711.dkr.ecr.ap-northeast-1.amazonaws.com/nextapi:latest
+
+aws configure
+
+
+region name
+ap-northeast-1
+
+docker pull 403539290711.dkr.ecr.ap-northeast-1.amazonaws.com/nextapi:latest
+docker run -d --name nextapi -p 80:80 403539290711.dkr.ecr.ap-northeast-1.amazonaws.com/nextapi:latest
+
+cd /home/ec2-user/.docker/
+在docker-compose.yml启动 
+docker-compose up -d
+docker-compose down -v
+docker-compose ps
+
+docker exec -it docker_db_1 bash  进入容器
+
+docker system prune -a --volumes -f  清理缓存
+
+mysql -h localhost -P 3306 -u root -proot
+use demaestore;
+show tables;
+
+select * from combo_Foodcategory;
+
+docker exec -it docker_api_1 sh  进入容器
+
+cat /app/python/debug_amazon.html
+cat /app/python/
+
+/app/venv/bin/python /app/python/lowestPrice.py
+/app/venv/bin/python /app/python/loadMore.py
+
+docker logs docker_api_1
+
+cd /home/ec2-user/.docker/pagination.txt
+cd /etc/nginx
+/var/log/nginx
+
+# 3. 测试配置文件是否正确
+sudo nginx -t
+
+# 如果测试通过，则重新加载配置（或重启服务）
+sudo systemctl reload nginx
+
+curl http://localhost:3000/api/get-userInfo?userId=36080105
+curl http://localhost:3000/api/get-allComments
+curl http://localhost:3000/api/get-foods?shopName=%E7%84%BC%E8%82%89%E5%B1%8B
+curl http://localhost:3000/api/test-db-connection
+curl http://localhost:3000/api/searchLowestPrice?keyword=ソファー+2人掛け
+curl http://localhost:3000/api/loadMore
+
+https://awake-helped-fish.ngrok-free.app/api/get-foods?shopName=%E7%84%BC%E8%82%89%E5%B1%8B
+
+curl http://18.182.12.39/api/test-db-connection
+
+curl http://18.182.12.39/api/get-userInfo?userId=36080105
+
+
+aws cloudfront create-invalidation --distribution-id E1PW28Z2S1B7R5 --paths "/*"
+
+docker logs docker_api_1
+
+
+
+
+改db.ts
+localhost改为db
+
+改package.json
+
+改redis.ts
+localhost改为redis
+
+改main.ts
+446行           "http://localhost:4000/api/extract_problem",
+改为https://awake-helped-fish.ngrok-free.app/api/extract_problem
+
+/home/ec2-user/
+sudo mv /home/ec2-user/.docker start-services.service /etc/systemd/system
+sudo mv /home/ec2-user/.docker/ start-services.service /etc/systemd/system
+
+
+
+cd /usr/local/bin/
+ngrok authtoken 2nSyFKfS5d36BZwKIQlO0Hmhjtp_3vKMzsnEMDbRvEwKFdXrd
+
+ngrok start --config=ngrok.yml myapp
+
+sudo cat /root/.ngrok2/ngrok.yml
+
+docker logs docker_api_1
+
+npm run build
+更换s3资源
+aws s3 sync build/ s3://mysecondbucket2131 --delete
+
+删除cloudfront缓存
+aws cloudfront create-invalidation --distribution-id E1PW28Z2S1B7R5 --paths "/*"
+
+
+
+https://dgqvxorvhufwu.cloudfront.net/#/
+https://dgqvxorvhufwu.cloudfront.net/#/amazonLowestPrice
+
+

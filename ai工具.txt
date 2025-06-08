@@ -1,0 +1,56 @@
+npm run app:dev
+npx cross-env NODE_ENV=development electron .
+
+
+docker build -t nextapp-image .
+18.179.178.44
+scp -i "C:\Users\81804\Desktop\aws\root.pem" "C:\Users\81804\Desktop\React 基础 - 配套资料\React 基础 - day03\React 基础 - day03\03-code\redux-meituan-finished\docker-compose.yml" ec2-user@18.179.178.44:/home/ec2-user/nextapp/
+
+aws configure
+
+Access key ID,Secret access key
+ap-northeast-1
+json
+
+/home/ec2-user/nextapp/
+
+scp -i "C:\Users\81804\Desktop\aws\root.pem" "C:\Users\81804\Desktop\React 基础 - 配套资料\React 基础 - day03\React 基础 - day03\03-code\redux-meituan-finished\nginx.conf" ec2-user@18.179.178.44:~/nginx.conf
+
+
+    "build": "next build",
+    "start": "next start",
+
+konndenn61
+konndenn61@gmail.com
+Chenjie199861
+
+app.tsx 137 第二次请求
+
+C:\Users\81804\AppData\Local\Temp\screenCapture
+C:\Users\81804\AppData\Roaming\interview-coder\screenshots
+
+          problem_statement: response.data.problem_statement,
+          input_format: response.data.input_format,
+          output_format: response.data.output_format,
+          constraints: response.data.constraints,
+          test_cases: response.data.test_cases
+
+
+interviewfuck
+windowsSnapshot
+
+
+sk-55ed2a3029844e9bb1c7d0a843d153c7
+
+stable deffusion
+midjourney
+
+视频内涉及到的网站
+chatGpt https://chat.openai.com!
+midJourney httpswww.midjourney.com/
+stableDiffusion推荐@秋葉aaaki 整合包 https://www.bilibili.com/video/BV17d4y1C73R
+一个游戏素材炼制的网站 还处于beta版 app.scenario.com
+★娱乐视频，没有游戏可供下载
+★如果想下载往期游戏:www.mgamem.com
+★欢迎加入QQ频道:https://pd.qq.com/s/gqftxy92j
+★最近在修炼,不稳定更新

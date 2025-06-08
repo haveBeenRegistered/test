@@ -1,0 +1,167 @@
+192.168.127.128
+
+配置上网
+修改配置网卡配置文件
+vi /etc/sysconfig/network-scripts/ifcfg-ens33
+
+修改ONBOOT=yes
+
+重启网络服务
+
+systemctl restart network
+
+测试
+
+ping qq.com
+
+配置静态ip首先需要打开网卡配置文件
+
+vi /etc/sysconfig/network-scripts/ifcfg-ens33
+
+修改启动协议 BOOTPROTO=static
+手动配置ip地址
+
+TYPE=Ethernet
+PROXY_METHOD=none
+BROWSER_ONLY=no
+BOOTPROTO=static
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=yes
+IPV6_AUTOCONF=yes
+IPV6_DEFROUTE=yes
+IPV6_FAILURE_FATAL=no
+IPV6_ADDR_GEN_MODE=stable-privacy
+NAME=ens33
+UUID=d768f819-cfc1-4a6d-8bf5-cd7359a86c75
+DEVICE=ens33
+ONBOOT=yes
+# IP地址 （根据自己的环境修改）
+IPADDR=192.168.8.101
+# 子网掩码
+NETMASK=255.255.255.0
+# 网关（根据自己的环境修改）
+GATEWAY=192.168.8.2
+#DNS
+DNS1=223.5.5.5
+
+接下来重启网络服务
+systemctl restart network
+
+配置镜像
+sudo vi /etc/yum.repos.d/CentOS-Base.repo
+
+
+安装nginx
+
+tar zxvf nginx-1.22.1.tar.gz
+
+cd nginx-1.22.1
+
+./configure 
+
+yum install -y gcc
+
+./configure --prefix=/usr/local/nginx 
+
+
+make
+make install
+
+
+cd /usr/local/nginx/sbin
+
+ps -ef | grep nginx       # 查看进程
+./nginx					    # 启动
+./nginx -s stop			 	#快速停止
+./nginx -s quit 			#优雅关闭，在退出前完成已经接受的连接请求
+./nginx -s reload 			#重新加载配置
+
+
+关闭防火墙
+systemctl stop firewalld.service
+
+开启关闭防火墙
+systemctl disable firewalld.service
+
+安装成系统服务
+在如下位置创建服务脚本nginx.service
+
+vi /usr/lib/systemd/system/nginx.service
+
+重新加载系统服务
+systemctl daemon-reload
+
+启动服务
+systemctl start nginx.service
+
+关闭服务
+systemctl stop nginx.service
+
+检查配置文件语法
+sudo /usr/local/nginx/sbin/nginx -t
+
+重新加载配置文件
+systemctl reload nginx
+
+查看服务启动状态
+systemctl status nginx.service
+
+
+开机启动
+systemctl enable nginx.service
+
+查看详细的系统日志：
+journalctl -xe
+
+
+
+worker_processes  1; #允许进程数量，建议设置为cpu核心数或者auto自动检测，注意Windows服务器上虽然可以启动多个processes，但是实际只会用其中一个
+
+events {
+    #单个进程最大连接数（最大连接数=连接数*进程数）
+    #根据硬件调整，和前面工作进程配合起来用，尽量大，但是别把cpu跑到100%就行。
+    worker_connections  1024;
+}
+
+
+http {
+    #文件扩展名与文件类型映射表(是conf目录下的一个文件)
+    include       mime.types;
+    #默认文件类型，如果mime.types预先定义的类型没匹配上，默认使用二进制流的方式传输
+    default_type  application/octet-stream;
+
+    #sendfile指令指定nginx是否调用sendfile 函数（zero copy 方式）来输出文件，对于普通应用，必须设为on。如果用来进行下载等应用磁盘IO重负载应用，可设置为off，以平衡磁盘与网络IO处理速度。
+    sendfile        on;
+    
+     #长连接超时时间，单位是秒
+    keepalive_timeout  65;
+
+ #虚拟主机的配置
+    server {
+    #监听端口
+        listen       80;
+        #域名，可以有多个，用空格隔开
+        server_name  localhost;
+
+	#配置根目录以及默认页面
+        location / {
+            root   html;
+            index  index.html index.htm;
+        }
+
+	#出错页面配置
+        error_page   500 502 503 504  /50x.html;
+        #/50x.html文件所在位置
+        location = /50x.html {
+            root   html;
+        }
+        
+    }
+
+}
+
+
+用户和代理服务器是一家，正向代理
+·
+代理服务器和后端服务器是一家，反向代理

@@ -1,0 +1,247 @@
+192.168.227.128sudo systemctl status ssh sudo ufw disable
+
+225.225.225.0
+
+192.168.227.2
+
+192.168.227.2
+
+192.168.127.128
+
+git reset --mixed  0bcd689a498ed7b9544554d3c64fa0a1a87d8008
+e3b1648423f47e2d57a7c3f12c0dcc252b07654b
+
+yum-config-manager --add-repo https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo
+
+yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+
+启动docker
+systemctl start docker
+
+停止docker
+systemctl stop docker
+
+重启docker
+systemctl restart docker
+
+设置开机自启
+systemctl enable docker
+
+如果不报错，说明安装启动成功
+docker ps
+
+
+
+
+docker run -d \
+  --name mysql \
+  -p 3306:3306 \
+  -e TZ=Asia/Shanghai \
+  -e MYSQL_ROOT_PASSWORD=123 \
+  mysql
+
+docker run
+创建并运行一个容器，-d让容器后台运行
+--name
+给容器起个名字，必须唯一
+-p 3306:3306
+设置端口映射，前面的是宿主机的端口，后面的是容器内的端口
+-e TZ=Asia/Shanghai 
+-e MYSQL_ROOT_PASSWORD=123
+环境变量
+mysql
+运行的镜像的名字
+
+镜像命名规范
+一般由两部分组成: [repository]:[tag] mysql:5.7
+其中repository就是镜像名
+tag是镜像的版本(不写默认是最新的)
+
+
+2.1.1. 命令介绍
+其中，比较常见的命令有：
+
+命令	说明	文档地址
+docker pull	拉取镜像	docker pull
+docker push	推送镜像到 Docker Registry	docker push
+docker images	查看本地镜像	docker images
+docker rmi	删除本地镜像	docker rmi
+docker run	创建并运行容器（不能重复创建）	docker run
+docker stop	停止指定容器	docker stop
+docker start	启动指定容器	docker start
+docker restart	重新启动容器	docker restart
+docker rm	删除指定容器	docker rm
+docker ps	查看容器 	docker ps
+docker logs	查看容器运行日志	docker logs -f
+docker exec	进入容器 	docker exec -it nginx bash 退出exit
+docker save	保存镜像到本地压缩文件	docker save
+docker load	加载本地压缩文件到镜像	docker load
+docker inspect	查看容器详细信息	                docker inspect
+
+docker ps --format "{{.ID}}: {{.Names}} ({{.Status}})"
+
+
+
+
+
+数据卷命令
+命令	说明	文档地址
+docker volume create	创建数据卷	docker volume create
+docker volume ls	查看所有数据卷	docker volume ls
+docker volume rm	删除指定数据卷	docker volume rm
+docker volume inspect	查看某个数据卷的详情	docker volume inspect html+
+docker volume prune	清除未使用的数据卷	docker volume prune
+
+docker inspect 容器名 查看容器有没有数据卷挂载
+
+docker run -d \
+  --name mysql \
+  -e MYSQL_ROOT_PASSWORD=123 \
+  -v /root/mysql/data:/var/lib/mysql \
+  -v /root/mysql/conf:/etc/mysql/conf.d \
+  -v /root/mysql/init:/docker-entrypoint-initdb.d \
+  -p 3306:3306 \
+  mysql:latest
+
+docker run -d \
+  --name nginx \
+  -p 80:80 \
+  -v html:/usr/share/nginx/html \
+  nginx:latest
+
+解释
+docker run：创建并运行一个新的容器。
+-d：在后台运行容器（分离模式）。
+--name mysql：为容器指定名称为 mysql。
+-e MYSQL_ROOT_PASSWORD=your_password：设置 MySQL root 用户的密码。
+-v /path/to/local/data:/var/lib/mysql：将本地目录 /path/to/local/data 挂载到容器内的 /var/lib/mysql 目录。这个目录是 MySQL 数据库存储数据的默认位置。
+-p 3306:3306：将主机的端口 3306 映射到容器的端口 3306。
+mysql:latest：使用最新版本的 MySQL 镜像。
+
+创建本地数据目录： 确保你在本地创建了一个目录来存储 MySQL 数据
+mkdir -p /path/to/local/data
+mkdir -p /path/to/local/static
+
+
+
+
+Dockerfile 指令
+指令	说明
+FROM	指定基础镜像
+ENV	设置环境变量，可在后面指令使用
+COPY	拷贝本地文件到镜像的指定目录
+RUN	执行 Linux 的 shell 命令，一般是安装过程的命令
+EXPOSE	指定容器运行时监听的端口，是给镜像使用者看的
+ENTRYPOINT	镜像中应用的启动命令，容器运行时调用
+
+# 指定基础镜像
+FROM centos:6
+
+# 设置环境变量
+ENV key value
+
+# 拷贝本地文件到镜像的指定目录
+COPY ./jrell.tar.gz /tmp
+
+# 执行 Linux 的 shell 命令，一般是安装过程的命令
+RUN tar zxvf /tmp/jrell.tar.gz && export PATH=/tmp/jrell:$PATH
+
+# 指定容器运行时监听的端口，是给镜像使用者看的
+EXPOSE 8080
+
+# 镜像中应用的启动命令，容器运行时调用
+ENTRYPOINT ["java", "-jar", "xx.jar"]
+
+
+
+# 使用官方的 Nginx 作为基础镜像
+FROM nginx:alpine
+
+# 复制构建后的文件到 Nginx 的默认静态文件目录
+COPY build /usr/share/nginx/html
+
+# 暴露应用运行的端口
+EXPOSE 80
+
+# 启动 Nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+
+构建 Docker 镜像：
+在 /root/demo 目录下运行以下命令： 注意.是指dockerFile所在目录，如果在当前目录就是.
+docker build -t my-react-app .
+
+运行 Docker 容器：
+使用构建的镜像运行 Docker 容器：
+docker run -d -p 80:80 --name my-react-app my-react-app
+
+验证
+你可以通过以下命令验证容器是否正在运行：
+docker ps
+
+
+
+网络，默认情况下，所有容器都是以网桥的方式连接到Docker的一个虚拟网桥上：、
+
+
+Docker 网络操作命令
+命令	说明	文档地址
+docker network create	创建一个网络	docker network create heima最后参数是网络名字
+docker network ls	查看所有网络	docker network ls
+docker network rm	删除指定网络	docker network rm
+docker network prune	清除未使用的网络	docker network prune
+docker network connect	使指定容器连接加入某网络	docker network connect
+docker network disconnect	使指定容器连接离开某网络	docker network disconnect
+docker network inspect	查看网络详细信息	docker network inspect
+
+
+docker run -d \
+  --name mysql \
+  -p 3306:3306 \
+  -e TZ=Asia/Shanghai \
+  -e MYSQL_ROOT_PASSWORD=123 \
+  --network heima \
+  mysql
+
+创建容器时直接加入指定网络
+部署了自定义网络后就可以完成容器间互联，注意默认网络不支持。
+
+
+dockerCompose 
+可以用docker-compose.yml来定义一组相关联的应用容器，帮助我们实现多个相互关联的Docker容器的快速部署
+
+
+
+
+Docker Compose 命令格式
+类型和说明
+类型	参数或指令	说明
+选项	-f	指定 compose 文件的路径和名称
+选项	-p	指定 project 名称
+命令	up	创建并启动所有 service 容器
+命令	down	停止并移除所有容器、网络
+命令	ps	列出所有启动的容器
+命令	logs	查看指定容器的日志
+命令	stop	停止容器
+命令	start	启动容器
+命令	restart	重启容器
+命令	top	查看运行的进程
+命令	exec	在指定的运行中容器中执行命令
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
